@@ -44,4 +44,6 @@ if __name__ == "__main__":
     base_path = os.getcwd()
     image_path = os.path.join(base_path, "realPictures/" + str(picture) + ".jpg")
 
+    print(binary_mask)
+
     visualisation.display_image_with_mask(image_path, binary_mask)

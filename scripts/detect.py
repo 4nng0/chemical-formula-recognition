@@ -3,9 +3,7 @@ import cv2
 import tensorflow as tf
 from tensorflow.keras.models import load_model
 import os
-import matplotlib.pyplot as plt
-from tensorflow.lite.tools import visualize
-import visualisation
+from scripts import visualisation
 
 # Enable GPU memory growth
 gpus = tf.config.experimental.list_physical_devices('GPU')
