@@ -39,7 +39,8 @@ def load_data(image_dir, mask_dir, img_size=(512, 512)):
 
 if __name__ == "__main__": 
     
-    base_path = os.getcwd()
+    script_path = os.getcwd()
+    base_path = os.path.dirname(script_path)
     image_dir = os.path.join(base_path, 'data/images')
     mask_dir = os.path.join(base_path, 'data/masks')
     images, masks = load_data(image_dir, mask_dir)

@@ -2,8 +2,9 @@ import numpy as np
 import cv2
 import tensorflow as tf
 import os
-from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
+
+from scripts import detect
 
 # Enable GPU memory growth
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -14,42 +15,6 @@ if gpus:
         print("Enabled GPU memory growth.")
     except RuntimeError as e:
         print(f"Error enabling GPU memory growth: {e}")
-
-
-def detect_arrow_heads(image_path, model_path):
-    model = tf.keras.models.load_model(model_path)
-    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-
-    # Increase contrast
-    image = cv2.convertScaleAbs(image, alpha=1.3, beta=0)
-
-    print("Image loaded successfully. Resizing...")
-    image_resized = cv2.resize(image, (512, 512))
-    print("Image resized successfully!")
-    image_array = np.expand_dims(image_resized, axis=[0, -1]) / 255.0
-
-    # Prediction
-    try:
-        prediction = model.predict(image_array)[0, :, :, 0]
-        print("Prediction completed successfully!")
-    except Exception as e:
-        print(f"Error during prediction: {e}")
-    prediction_resized = cv2.resize(prediction, (image.shape[1], image.shape[0]))
-
-    # Create binary mask
-    threshold = 0.4
-    binary_mask = (prediction_resized > threshold).astype(np.uint8)
-
-    return binary_mask
-
-
-def connected_components_analysis(binary_mask, original_image):
-    # Perform connected components analysis
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
-
-    print(f"Total connected components (excluding background): {num_labels - 1}")
-
-    return num_labels, labels, stats, centroids
 
 
 def detect_lines(image):
@@ -165,9 +130,11 @@ def filter_short_lines(lines, min_length=30):
 
 
 def get_result(image_path, model_path, result_path):
-    binary_mask = detect_arrow_heads(image_path, model_path)
+    binary_mask = detect.arrow_heads(image_path, model_path)
     original_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-    num_labels, labels, stats, centroids = connected_components_analysis(binary_mask, original_image)
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
+    print(f"Total connected components (excluding background): {num_labels - 1}")
+
     detected_lines = detect_lines(original_image)
 
     # Find intersecting lines
@@ -183,7 +150,8 @@ def get_result(image_path, model_path, result_path):
 
 if __name__ == "__main__":
     # Image path
-    base_path = os.getcwd()
+    script_path = os.getcwd()
+    base_path = os.path.dirname(script_path)
     test_images = 'test_images'
     image_name = '8.jpeg'
     model_name = 'unet_model_512.keras'

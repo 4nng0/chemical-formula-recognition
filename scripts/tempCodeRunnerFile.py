@@ -1,2 +1,0 @@
-
-    # Connected Components Analysis

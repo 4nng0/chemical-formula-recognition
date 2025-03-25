@@ -4,6 +4,8 @@ import tensorflow as tf
 from tensorflow.keras.models import load_model
 import os
 import matplotlib.pyplot as plt
+from tensorflow.lite.tools import visualize
+import visualisation
 
 # Enable GPU memory growth
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -16,10 +18,14 @@ if gpus:
         print(f"Error enabling GPU memory growth: {e}")
         
         
-def detect_arrow_heads(image_path, model_path):
+def arrow_heads(image_path, model_path):
     model = tf.keras.models.load_model(model_path)
     image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-    
+
+
+    # Increase contrast
+    image = cv2.convertScaleAbs(image, alpha=1.3, beta=0)
+
     print("Image loaded successfully. Resizing...")
     image_resized = cv2.resize(image, (512, 512))
     print("Image resized successfully!") 
@@ -35,18 +41,19 @@ def detect_arrow_heads(image_path, model_path):
         print(f"Error during prediction: {e}")
     prediction_resized = cv2.resize(prediction, (image.shape[1], image.shape[0]))
 
-    # Threshold to detect arrow heads
+   # Create binary mask
     threshold = 0.4
-    arrow_heads = np.where(prediction_resized > threshold)
+    binary_mask = (prediction_resized > threshold).astype(np.uint8)
 
-    return arrow_heads
+    return binary_mask
 
 
 if __name__ == "__main__":
     # Specify a test image path
-    base_path = os.getcwd()
+    script_path = os.getcwd()
+    base_path = os.path.dirname(script_path)
     test_image_dir = 'test_images'
-    image_name = '5.jpeg'
+    image_name = '2.jpg'
     model_name = 'saved_models/unet_model_512.keras'
     image_path = os.path.join(base_path, test_image_dir, image_name)
     model_path = os.path.join(base_path, model_name)
@@ -54,19 +61,10 @@ if __name__ == "__main__":
     # Process image
     
     # Call detect_arrow_heads function
-    arrow_heads = detect_arrow_heads(image_path, model_path)
+    arrow_heads = arrow_heads(image_path, model_path)
     
     # Check the output
-    print("Arrow heads detected at positions:", arrow_heads)
+    #print("Arrow heads detected at positions:", arrow_heads)
     
-    # Reload the image and display it for visualization
-    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-    plt.imshow(image, cmap='gray')
+    visualisation.display_image_with_mask(image_path, arrow_heads)
 
-    # Mark the detected arrow heads
-    for i in range(len(arrow_heads[0])):  # Y coordinates
-        plt.scatter(arrow_heads[1][i], arrow_heads[0][i], color='red', s=10)  # X and Y coordinates
-
-    plt.title("Arrow Heads Detected")
-    plt.show()
-    print(os.getcwd())

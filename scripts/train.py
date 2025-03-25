@@ -1,6 +1,5 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.models import Model
 from unetModel import *  # Import the U-Net model definition
 import os
 
@@ -11,8 +10,10 @@ def load_preprocessed_data():
     Returns:
         tuple: A tuple containing the preprocessed images and masks as NumPy arrays.
     """
-    images = np.load(os.path.join(os.getcwd(), 'data/preprocessed_images_512.npy'))
-    masks = np.load(os.path.join(os.getcwd(), 'data/preprocessed_masks_512.npy'))
+    script_path = os.getcwd()
+    base_path = os.path.dirname(script_path)
+    images = np.load(os.path.join(base_path, 'data/preprocessed_images_512.npy'))
+    masks = np.load(os.path.join(base_path, 'data/preprocessed_masks_512.npy'))
     
     return images, masks
 
