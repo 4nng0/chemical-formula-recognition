@@ -1,12 +1,10 @@
 import os
-
+import torch
 import cv2
 import numpy as np
-import tensorflow as tf
 from matplotlib import pyplot as plt
-from torch.ao.nn.quantized.functional import threshold
 
-from scripts import detect, visualisation
+from scripts import detect
 
 
 def testPixelAccuracy():
@@ -14,8 +12,9 @@ def testPixelAccuracy():
     base_path = os.path.dirname(script_path)
     model_path = os.path.join(base_path, 'saved_models/unet_model_512.keras')
 
-    total = 0
-    numberOfPictures = 1
+    precision = 0
+    recall = 0
+    numberOfPictures = 5
 
     for i in range(1, numberOfPictures + 1):
         picture = i
@@ -24,31 +23,24 @@ def testPixelAccuracy():
         image = cv2.imread("binaryMasks/" + str(picture) + ".png", cv2.IMREAD_GRAYSCALE)  # Graustufenbild laden
         real = (image > 127).astype(np.uint8)
 
-        # predicted = np.array([[1, 0, 0, 0],[1, 1, 0, 0]])
-        # real = np.array([[1, 1, 0, 0],[1, 1, 1, 0]])
+        tp = np.sum(predicted * real)  # TP
+        fp = np.sum(predicted  * (1 - real))  # FP
+        fn = np.sum((1 - predicted ) * real)  # FN
+        tn = np.sum((1 - predicted ) * (1 - real))  # TN
 
-        # visualisation.display_image_with_mask(imagePath, predicted)
+        precision += tp / (tp + fp )
+        recall += tp / (tp + fn)
 
-        temp = real - predicted
-        temp = np.abs(temp)
-        correct_pixels = temp.size - np.sum(temp)
+        print("pixel precision for picture " + str(picture) + ": " + str(tp / (tp + fp )))
+        print("pixel recall for picture " + str(picture) + ": " + str(tp / (tp + fn)))
 
-        # visualisation.display_image_with_mask(imagePath, temp)
-        total_pixels = real.size
 
-        print("correct pixels: " + str(correct_pixels))
-        accuracy = correct_pixels / total_pixels
-        total += accuracy
-        print("pixel accuracy for picture " + str(picture) + ": " + str(accuracy))
-
-        correct_pixels = np.sum(real == predicted)
-        accuracy = correct_pixels / total_pixels
-        print("correct pixels: " + str(correct_pixels))
-        print("pixel accuracy for picture " + str(picture) + ": " + str(accuracy))
-        # TODO: calculate pixel accuracy FIND MISTAKE
-
-    total = total / numberOfPictures
-    print("average pixel accuracy: " + str(total))
+    precision = precision / numberOfPictures
+    recall = recall / numberOfPictures
+    f1 = 2 * (precision * recall) / (precision + recall)
+    print("average pixel precision: " + str(precision))
+    print("average pixel recall: " + str(recall))
+    print("pixel f1: " + str(f1))
 
 
 def testCentroidAccuracy():
@@ -56,12 +48,17 @@ def testCentroidAccuracy():
     base_path = os.path.dirname(script_path)
     model_path = os.path.join(base_path, 'saved_models/unet_model_512.keras')
 
-    total = 0
+
     numberOfPictures = 13
+    recall = 0
+    accuracy = 0
+    precision = 0
+
 
     for i in range(1, numberOfPictures + 1):
         picture = i
         imagePath = "realPictures/" + str(picture) + ".jpg"
+        result_path = os.path.join(script_path, 'test_results', 'centroid_' + str(picture) + "_result.png")
         predicted = detect.arrow_heads(imagePath, model_path)
         image = cv2.imread("binaryMasks/" + str(picture) + ".png", cv2.IMREAD_GRAYSCALE)  # Graustufenbild laden
         real = (image > 127).astype(np.uint8)
@@ -69,25 +66,22 @@ def testCentroidAccuracy():
         p_num_labels, p_labels, p_stats, p_centroids = cv2.connectedComponentsWithStats(predicted)
         r_num_labels, r_labels, r_stats, r_centroids = cv2.connectedComponentsWithStats(real)
 
-        #print(r_centroids)
-        #print(p_centroids)
 
         #makes a circle around the centroid to the width and height of the object
         #assumes that the arrows are all the same size
-        threshold = max(p_stats[1, cv2.CC_STAT_WIDTH], p_stats[1, cv2.CC_STAT_HEIGHT])
-        min_idx = -1
 
         list_matches = []
         list_real_without_partner = []
 
         centroid_list = [tuple(centroid) for centroid in p_centroids[1:]] # Skip background centroid
-
+        i = 0
 
         for r_idx, (cx, cy) in enumerate(r_centroids[1:], start=1):  # Skip background centroid
+            i += 1
+            threshold = max(r_stats[i, cv2.CC_STAT_WIDTH], r_stats[i, cv2.CC_STAT_HEIGHT])
             min_diff = 2 * threshold
 
-
-            for  (x1, y1) in centroid_list:
+            for (x1, y1) in centroid_list:
                 x_diff = cx - x1
                 y_diff = cy - y1
                 this_diff = np.sqrt(x_diff ** 2 + y_diff ** 2)
@@ -121,15 +115,27 @@ def testCentroidAccuracy():
             cv2.circle(output_image, (int(px), int(py)), 5, (0, 255, 0), -1)
 
 
-        plt.figure(figsize=(8, 8))
-        plt.imshow(cv2.cvtColor(output_image, cv2.COLOR_BGR2RGB))
-        plt.axis("off")
-        plt.show()
+
+        cv2.imwrite(result_path, output_image)
+
+        recall += (list_matches.__len__()) / r_centroids.__len__()
+        accuracy += list_matches.__len__() /(list_matches.__len__() + list_real_without_partner.__len__() + list_predictedWithoutPartner.__len__())
+        precision += (list_matches.__len__()) / p_centroids.__len__()
+
+
+    recall = recall / numberOfPictures
+    accuracy = accuracy / numberOfPictures
+    precision = precision / numberOfPictures
+    f1 = 2 * (precision * recall) / (precision + recall)
+    print("recall: " + str(recall))
+    print("accuracy: " + str(accuracy))
+    print("precision: " + str(precision))
+    print("F1: " + str(f1))
 
 
 
 if __name__ == "__main__":
 
-    #testPixelAccuracy()
+    testPixelAccuracy()
 
     testCentroidAccuracy()

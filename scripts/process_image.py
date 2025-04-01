@@ -12,8 +12,10 @@ from arrow_line_recognition import get_result
 
 
 if __name__ == '__main__' :
-    
-    base_path = os.getcwd()
+
+
+    script_path = os.getcwd()
+    base_path = os.path.dirname(script_path)
     test_images = 'test_images'
     notext_images = 'notext_images'
     result_images = 'result_images'

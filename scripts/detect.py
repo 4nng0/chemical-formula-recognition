@@ -15,7 +15,8 @@ if gpus:
     except RuntimeError as e:
         print(f"Error enabling GPU memory growth: {e}")
         
-        
+
+
 def arrow_heads(image_path, model_path):
     model = tf.keras.models.load_model(model_path)
     image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
@@ -44,6 +45,7 @@ def arrow_heads(image_path, model_path):
     binary_mask = (prediction_resized > threshold).astype(np.uint8)
 
     return binary_mask
+
 
 
 if __name__ == "__main__":

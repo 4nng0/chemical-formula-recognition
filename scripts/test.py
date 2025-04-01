@@ -31,4 +31,5 @@ if __name__ == "__main__":
     binary_map = detect.arrow_heads(image_path, model_path)
 
         # Visualize the results
-    visualisation.display_image_with_mask(image_path, binary_map)
+    pic = visualisation.display_image_with_mask(image_path, binary_map)
+    pic.show()

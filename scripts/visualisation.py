@@ -25,4 +25,4 @@ def display_image_with_mask(image_path, binary_mask):
     plt.imshow(overlayed_image)
     plt.title("Arrow Heads Detected with Binary Mask Overlay")
     plt.axis("off")
-    plt.show()
+    return plt
