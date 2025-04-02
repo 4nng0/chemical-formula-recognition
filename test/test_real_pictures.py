@@ -1,20 +1,18 @@
 import os
-import torch
 import cv2
 import numpy as np
-from matplotlib import pyplot as plt
 
 from scripts import detect
 
 
-def testPixelAccuracy():
+def testPixelAccuracy(numberOfPictures):
     script_path = os.getcwd()
     base_path = os.path.dirname(script_path)
     model_path = os.path.join(base_path, 'saved_models/unet_model_512.keras')
 
     precision = 0
     recall = 0
-    numberOfPictures = 5
+
 
     for i in range(1, numberOfPictures + 1):
         picture = i
@@ -43,13 +41,13 @@ def testPixelAccuracy():
     print("pixel f1: " + str(f1))
 
 
-def testCentroidAccuracy():
+def testCentroidAccuracy(numberOfPictures):
     script_path = os.getcwd()
     base_path = os.path.dirname(script_path)
     model_path = os.path.join(base_path, 'saved_models/unet_model_512.keras')
 
 
-    numberOfPictures = 13
+    numberOfPictures
     recall = 0
     accuracy = 0
     precision = 0
@@ -136,6 +134,8 @@ def testCentroidAccuracy():
 
 if __name__ == "__main__":
 
-    testPixelAccuracy()
+    numberOfPictures = 13
 
-    testCentroidAccuracy()
+    testPixelAccuracy(numberOfPictures)
+
+    testCentroidAccuracy(numberOfPictures)

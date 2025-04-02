@@ -1,3 +1,8 @@
+import os
+
+import cv2
+import numpy as np
+
 formules = [
     "BH3",
     "BH3NH3",
@@ -119,21 +124,144 @@ transformations = {
     (-1, -1): 135  # Haut-Gauche
 }
 
-import cv2
-import numpy as np
-
-
 # TODO LIST
 # different arrow styles
 # different style of chemical formulas
-# text at all different places
+# text at all different places and in diffent styles
 # random bits that are not arrows
 # plus where arrows could be
 # arrows coming together
-# box types like parentisis
 # funnel thing
 
+# DONE
+# more complex boxes
+#
+
+def draw_arrow(collage_image, collage_masque, numFleche, angle, e, yi, xi, hi, wi, direction):
+    # load the random arrow in the right direction
+    defautAngle = 0
+    if np.random.randint(0, 2) == 1:  # you have a 50/50 chance of changing the angle of the arrow
+        defautAngle = np.random.randint(-11, 11)
+    angleImage = (angle + defautAngle) % 360
+    fleche = cv2.imread(f"arrowSource/{numFleche}_{angleImage}.png", cv2.IMREAD_UNCHANGED)
+    masque = cv2.imread(f"arrowMask/{numFleche}_{angleImage}.png", cv2.IMREAD_UNCHANGED)
+    hOrigin, wOrigin = fleche.shape[:2]
+
+    # leave a margin to prevent the arrow from sticking
+    m = np.random.randint(10, 20)
+    if 2 * m > e:
+        m = 10
+
+    # resize the arrow to find the coordinates of its upper left and lower right corners
+    if directions[direction][0] == 1:
+        yf1 = yi + hi + m
+        yf2 = yi + hi + e - m
+        fleche = cv2.resize(fleche, (fleche.shape[1], e - 2 * m))
+        masque = cv2.resize(masque, (fleche.shape[1], e - 2 * m))
+    if directions[direction][0] == -1:
+        yf1 = yi - e + m
+        yf2 = yi - m
+        fleche = cv2.resize(fleche, (fleche.shape[1], e - 2 * m))
+        masque = cv2.resize(masque, (fleche.shape[1], e - 2 * m))
+    if directions[direction][1] == 1:
+        xf1 = xi + wi + m
+        xf2 = xi + wi + e - m
+        fleche = cv2.resize(fleche, (e - 2 * m, fleche.shape[0]))
+        masque = cv2.resize(masque, (e - 2 * m, fleche.shape[0]))
+    if directions[direction][1] == -1:
+        xf1 = xi - e + m
+        xf2 = xi - m
+        fleche = cv2.resize(fleche, (e - 2 * m, fleche.shape[0]))
+        masque = cv2.resize(masque, (e - 2 * m, fleche.shape[0]))
+    if directions[direction][0] == 0:
+        fleche = cv2.resize(fleche, (fleche.shape[1], (hOrigin * fleche.shape[1]) // wOrigin))
+        masque = cv2.resize(masque, (fleche.shape[1], (hOrigin * fleche.shape[1]) // wOrigin))
+        yf1 = yi + (hi - fleche.shape[0]) // 2
+        yf2 = yi + (hi + fleche.shape[0]) // 2
+    if directions[direction][1] == 0:
+        fleche = cv2.resize(fleche, ((wOrigin * fleche.shape[0]) // hOrigin, fleche.shape[0]))
+        masque = cv2.resize(masque, ((wOrigin * fleche.shape[0]) // hOrigin, fleche.shape[0]))
+        xf1 = xi + (wi - fleche.shape[1]) // 2
+        xf2 = xi + (wi + fleche.shape[1]) // 2
+
+    # draw the arrow on the collage considering the opacity of the image
+
+    flecheBgr = fleche[:, :, 0:3]
+    flecheAlpha = fleche[:, :, 3]
+
+    for c in range(3):
+        collage_image[yf1:yf2, xf1:xf2, c] = (1 - flecheAlpha / 255.0) * collage_image[yf1:yf2, xf1:xf2, c] + (
+                flecheAlpha / 255.0) * flecheBgr[:, :, c]
+
+    # same for the mask
+
+    masqueBgr = masque[:, :, 0:3]
+    masqueAlpha = masque[:, :, 3]
+
+    for c in range(3):
+        collage_masque[yf1:yf2, xf1:xf2, c] = (1 - masqueAlpha / 255.0) * collage_masque[yf1:yf2, xf1:xf2,
+                                                                          c] + (
+                                                      masqueAlpha / 255.0) * masqueBgr[:, :, c]
+
+
+def draw_frames(collage_image, x, y, img_width, img_height):
+    option = np.random.choice(["solid_box", "dotted_box", "parentheses"])  # all are same probability
+    padding = 50
+    color = (0, 0, 0)
+    thickness = np.random.randint(1, 5)
+
+    top_left = (x - padding, y - padding)
+    bottom_right = (x + img_width + padding, y + img_height + padding)
+
+    if option == "solid_box":
+        # draw frame
+        cv2.rectangle(collage_image, top_left, bottom_right, color, thickness)
+
+    elif option == "dotted_box":
+        # draw dotted frame
+        dash_length = np.random.randint(5, 25)
+        for i in range(top_left[0], bottom_right[0], dash_length * 2):
+            cv2.line(collage_image, (i, top_left[1]), (i + dash_length, top_left[1]), color, thickness)
+            cv2.line(collage_image, (i, bottom_right[1]), (i + dash_length, bottom_right[1]), color, thickness)
+        for i in range(top_left[1], bottom_right[1], dash_length * 2):
+            cv2.line(collage_image, (top_left[0], i), (top_left[0], i + dash_length), color, thickness)
+            cv2.line(collage_image, (bottom_right[0], i), (bottom_right[0], i + dash_length), color, thickness)
+
+    elif option == "parentheses":
+        # draw parentheses
+        length = np.random.randint(20, 45)  # Länge der Klammern
+
+        # left side
+        cv2.line(collage_image, top_left, (top_left[0] + length, top_left[1]), color, thickness)
+        cv2.line(collage_image, top_left, (top_left[0], bottom_right[1]), color, thickness)
+        cv2.line(collage_image, (top_left[0], bottom_right[1]), (top_left[0] + length, bottom_right[1]), color,
+                 thickness)
+
+        # right side
+        cv2.line(collage_image, (bottom_right[0], top_left[1]), (bottom_right[0] - length, top_left[1]), color,
+                 thickness)
+        cv2.line(collage_image, (bottom_right[0], top_left[1]), (bottom_right[0], bottom_right[1]), color,
+                 thickness)
+        cv2.line(collage_image, bottom_right, (bottom_right[0] - length, bottom_right[1]), color, thickness)
+
+
+def draw_plus(collage_image, yi, xi, hi, wi, direction, m):
+    pass
+    my, mx = round( yi + 0.5 * hi) , round(xi + 0.5 * wi)
+    font = np.random.randint(1, 7)
+    font_scale = np.random.randint(5, 15) / 10
+
+    cv2.putText(collage_image, "+", (mx, my), font, font_scale, (0, 0, 0), 3, cv2.LINE_AA)
+
+    pass
+
+
 def create_random_box(image_paths, collage_width, collage_height):
+    import numpy as np
+    import cv2
+    print(collage_height, collage_width)
+    print(image_paths)
+    print(os.path.exists(image_paths[0]))
     # Create a blank white canvas for the collage
     collage_image = np.zeros((collage_height, collage_width, 3), dtype=np.uint8)
     collage_image.fill(255)  # Remplir l'image avec du blanc
@@ -147,7 +275,7 @@ def create_random_box(image_paths, collage_width, collage_height):
 
     # Charger et placer chaque image aux positions spécifiées
     n = 0  # Counter for the number of images placed
-    positions = []  # Stores image positions
+    positions = []  # Stores image positions as [x, y, img_width, img_height] with x, y left lower corner position
     for image_path in image_paths:
         image = cv2.imread(image_path)
 
@@ -175,9 +303,10 @@ def create_random_box(image_paths, collage_width, collage_height):
             image = np.concatenate((image, np.zeros((30, image.shape[1], 3), dtype=np.uint8) + 255), axis=0)
 
             # add text to the image
-            font = np.random.randint(2, 6)
+            font = np.random.randint(1, 7)
+            font_scale = np.random.randint(5, 15) /10
             cv2.putText(image, formules[np.random.randint(0, len(formules))] + " (m/z = " + str(
-                np.random.randint(2, 300)) + ")", (10, image.shape[0] - 5), font, 0.35, (0, 0, 0), 1, cv2.LINE_AA)
+                np.random.randint(2, 300)) + ")", (10, image.shape[0] - 5), font, font_scale, (0, 0, 0), 1, cv2.LINE_AA)
 
         img_height, img_width, _ = image.shape
 
@@ -188,27 +317,28 @@ def create_random_box(image_paths, collage_width, collage_height):
 
         # Place the first image at a random position
         if n == 0:
+            # x and y are the left lower corner
             x, y = np.random.randint(0, collage_width - img_width), np.random.randint(0, collage_height - img_height)
             positions.append([x, y, img_width, img_height])
         else:
             # Generate possible positions based on previous images
-            positionsPossibles = []
+            positionsPossibles = [] # [x1, y1, j, espacement] this is what elements look like
             for i in range(n):
                 positionsPossibles.append([])
                 for j in range(len(directions)):
-                    # espacement entre les images random
-                    espacement = np.random.randint(100, 150)
+                    # look in all random directions to see if there is space
+                    buffer_between_pictures = np.random.randint(100, 150)
                     # location of the area is tested
                     if directions[j][1] == 1:
-                        x1 = positions[i][0] + positions[i][2] + espacement
+                        x1 = positions[i][0] + positions[i][2] + buffer_between_pictures
                     elif directions[j][1] == -1:
-                        x1 = positions[i][0] - img_width - espacement
+                        x1 = positions[i][0] - img_width - buffer_between_pictures
                     else:
                         x1 = positions[i][0]
                     if directions[j][0] == 1:
-                        y1 = positions[i][1] + positions[i][3] + espacement
+                        y1 = positions[i][1] + positions[i][3] + buffer_between_pictures
                     elif directions[j][0] == -1:
-                        y1 = positions[i][1] - img_height - espacement
+                        y1 = positions[i][1] - img_height - buffer_between_pictures
                     else:
                         y1 = positions[i][1]
 
@@ -217,7 +347,7 @@ def create_random_box(image_paths, collage_width, collage_height):
                         # check if the zone is white
                         zone = collage_image[y1:y1 + img_height, x1:x1 + img_width]
                         if np.all(zone == 255):
-                            positionsPossibles[i].append([x1, y1, j, espacement])
+                            positionsPossibles[i].append([x1, y1, j, buffer_between_pictures])
 
             # if no zone is possible, move on to the next image
             possible = False
@@ -259,115 +389,19 @@ def create_random_box(image_paths, collage_width, collage_height):
         # Paste image into collage
         collage_image[y:y + img_height, x:x + img_width] = image
 
+
+        # draw arrow or plus between the pictures
         if n > 0:
-            # load the random arrow in the right direction
-            defautAngle = 0
-            if np.random.randint(0, 2) == 1:  # you have a 50/50 chance of changing the angle of the arrow
-                defautAngle = np.random.randint(-11, 11)
-            angleImage = (angle + defautAngle) % 360
-            fleche = cv2.imread(f"datasetGeneration/arrowSource/{numFleche}_{angleImage}.png", cv2.IMREAD_UNCHANGED)
-            masque = cv2.imread(f"datasetGeneration/arrowMask/{numFleche}_{angleImage}.png", cv2.IMREAD_UNCHANGED)
-            hOrigin, wOrigin = fleche.shape[:2]
+            # 10% chance of drawing a arrow
+            if np.random.randint(0, 10) == 0:
 
-            # leave a margin to prevent the arrow from sticking
-            m = np.random.randint(10, 20)
-            if 2 * m > e:
-                m = 10
-
-            # resize the arrow to find the coordinates of its upper left and lower right corners
-            if directions[direction][0] == 1:
-                yf1 = yi + hi + m
-                yf2 = yi + hi + e - m
-                fleche = cv2.resize(fleche, (fleche.shape[1], e - 2 * m))
-                masque = cv2.resize(masque, (fleche.shape[1], e - 2 * m))
-            if directions[direction][0] == -1:
-                yf1 = yi - e + m
-                yf2 = yi - m
-                fleche = cv2.resize(fleche, (fleche.shape[1], e - 2 * m))
-                masque = cv2.resize(masque, (fleche.shape[1], e - 2 * m))
-            if directions[direction][1] == 1:
-                xf1 = xi + wi + m
-                xf2 = xi + wi + e - m
-                fleche = cv2.resize(fleche, (e - 2 * m, fleche.shape[0]))
-                masque = cv2.resize(masque, (e - 2 * m, fleche.shape[0]))
-            if directions[direction][1] == -1:
-                xf1 = xi - e + m
-                xf2 = xi - m
-                fleche = cv2.resize(fleche, (e - 2 * m, fleche.shape[0]))
-                masque = cv2.resize(masque, (e - 2 * m, fleche.shape[0]))
-            if directions[direction][0] == 0:
-                fleche = cv2.resize(fleche, (fleche.shape[1], (hOrigin * fleche.shape[1]) // wOrigin))
-                masque = cv2.resize(masque, (fleche.shape[1], (hOrigin * fleche.shape[1]) // wOrigin))
-                yf1 = yi + (hi - fleche.shape[0]) // 2
-                yf2 = yi + (hi + fleche.shape[0]) // 2
-            if directions[direction][1] == 0:
-                fleche = cv2.resize(fleche, ((wOrigin * fleche.shape[0]) // hOrigin, fleche.shape[0]))
-                masque = cv2.resize(masque, ((wOrigin * fleche.shape[0]) // hOrigin, fleche.shape[0]))
-                xf1 = xi + (wi - fleche.shape[1]) // 2
-                xf2 = xi + (wi + fleche.shape[1]) // 2
-
-            # draw the arrow on the collage considering the opacity of the image
-
-            flecheBgr = fleche[:, :, 0:3]
-            flecheAlpha = fleche[:, :, 3]
-
-            for c in range(3):
-                collage_image[yf1:yf2, xf1:xf2, c] = (1 - flecheAlpha / 255.0) * collage_image[yf1:yf2, xf1:xf2, c] + (
-                            flecheAlpha / 255.0) * flecheBgr[:, :, c]
-
-            # same for the mask
-
-            masqueBgr = masque[:, :, 0:3]
-            masqueAlpha = masque[:, :, 3]
-
-            for c in range(3):
-                collage_masque[yf1:yf2, xf1:xf2, c] = (1 - masqueAlpha / 255.0) * collage_masque[yf1:yf2, xf1:xf2,
-                                                                                  c] + (
-                                                                  masqueAlpha / 255.0) * masqueBgr[:, :, c]
-
-        import numpy as np
-        import cv2
+                draw_plus(collage_image, yi, xi, hi, wi, direction, e)
+            else :
+                draw_arrow(collage_image, collage_masque, numFleche, angle, e, yi, xi, hi, wi, direction)
 
         # draw a mark arount the picture
         if np.random.randint(0, 10) == 0:
-            option = np.random.choice(["solid_box", "dotted_box", "parentheses"])  # all are same probability
-            padding = 50
-            color = (0, 0, 0)
-            thickness = n // 2
-
-            top_left = (x - padding, y - padding)
-            bottom_right = (x + img_width + padding, y + img_height + padding)
-
-            if option == "solid_box":
-                # draw frame
-                cv2.rectangle(collage_image, top_left, bottom_right, color, thickness)
-
-            elif option == "dotted_box":
-                # draw dotted frame
-                dash_length = np.random.randint(5, 25)
-                for i in range(top_left[0], bottom_right[0], dash_length * 2):
-                    cv2.line(collage_image, (i, top_left[1]), (i + dash_length, top_left[1]), color, thickness)
-                    cv2.line(collage_image, (i, bottom_right[1]), (i + dash_length, bottom_right[1]), color, thickness)
-                for i in range(top_left[1], bottom_right[1], dash_length * 2):
-                    cv2.line(collage_image, (top_left[0], i), (top_left[0], i + dash_length), color, thickness)
-                    cv2.line(collage_image, (bottom_right[0], i), (bottom_right[0], i + dash_length), color, thickness)
-
-            elif option == "parentheses":
-                # draw parentheses
-                length = np.random.randint(20, 45)  # Länge der Klammern
-
-                # left side
-                cv2.line(collage_image, top_left, (top_left[0] + length, top_left[1]), color, thickness)
-                cv2.line(collage_image, top_left, (top_left[0], bottom_right[1]), color, thickness)
-                cv2.line(collage_image, (top_left[0], bottom_right[1]), (top_left[0] + length, bottom_right[1]), color,
-                         thickness)
-
-                # right side
-                cv2.line(collage_image, (bottom_right[0], top_left[1]), (bottom_right[0] - length, top_left[1]), color,
-                         thickness)
-                cv2.line(collage_image, (bottom_right[0], top_left[1]), (bottom_right[0], bottom_right[1]), color,
-                         thickness)
-                cv2.line(collage_image, bottom_right, (bottom_right[0] - length, bottom_right[1]), color, thickness)
+            draw_frames(collage_image, x, y, img_width, img_height)
 
         n += 1
 
@@ -442,16 +476,19 @@ for k in range(1000):
     cv2.imwrite(f'data/images/{k}.jpg', collage)
     cv2.imwrite(f'data/masks/{k}.jpg', masque)
 """
+"""
 
 image_paths = []
 nbMolecules = np.random.randint(5, 15)
 for j in range(nbMolecules):
     i = np.random.randint(0, 40000)
-    image_paths.append(f"datasetGeneration/chemicalStructureSource/{i}.png")
+     image_paths.append(f"datasetGeneration/chemicalStructureSource/{i}.png")
 
 collage_width, collage_height = 1500, 1500
 
 collage, masque = create_random_box(image_paths, collage_width, collage_height)
 
-cv2.imwrite(f'image.jpg', collage)
-cv2.imwrite(f'masque.jpg', masque)
+# cv2.imwrite(f'image.jpg', collage)
+# cv2.imwrite(f'masque.jpg', masque)
+
+"""

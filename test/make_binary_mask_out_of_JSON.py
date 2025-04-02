@@ -5,12 +5,11 @@ import numpy as np
 import cv2
 import scripts.visualisation as visualisation
 
-
+# The Json was made with labelstudio
 if __name__ == "__main__":
     import numpy as np
     import cv2
     import json
-    import matplotlib.pyplot as plt
 
     picture = 2
     # Lade die JSON-Daten
