@@ -1,5 +1,3 @@
-import os
-
 import cv2
 import numpy as np
 
@@ -137,8 +135,9 @@ transformations = {
 # more complex boxes
 #
 
-def draw_arrow(collage_image, collage_masque, numFleche, angle, e, yi, xi, hi, wi, direction):
+def draw_arrow(collage_image, collage_masque, numFleche, e, yi, xi, hi, wi, direction):
     # load the random arrow in the right direction
+    angle = transformations[directions[direction]]  # gives the number of degrees depending on the direction
     defautAngle = 0
     if np.random.randint(0, 2) == 1:  # you have a 50/50 chance of changing the angle of the arrow
         defautAngle = np.random.randint(-11, 11)
@@ -203,7 +202,6 @@ def draw_arrow(collage_image, collage_masque, numFleche, angle, e, yi, xi, hi, w
                                                                           c] + (
                                                       masqueAlpha / 255.0) * masqueBgr[:, :, c]
 
-
 def draw_frames(collage_image, x, y, img_width, img_height):
     option = np.random.choice(["solid_box", "dotted_box", "parentheses"])  # all are same probability
     padding = 50
@@ -244,7 +242,6 @@ def draw_frames(collage_image, x, y, img_width, img_height):
                  thickness)
         cv2.line(collage_image, bottom_right, (bottom_right[0] - length, bottom_right[1]), color, thickness)
 
-
 def draw_plus(collage_image, yi, xi, hi, wi, direction, m):
     pass
     my, mx = round( yi + 0.5 * hi) , round(xi + 0.5 * wi)
@@ -255,13 +252,7 @@ def draw_plus(collage_image, yi, xi, hi, wi, direction, m):
 
     pass
 
-
-def create_random_box(image_paths, collage_width, collage_height):
-    import numpy as np
-    import cv2
-    print(collage_height, collage_width)
-    print(image_paths)
-    print(os.path.exists(image_paths[0]))
+def init(collage_width, collage_height):
     # Create a blank white canvas for the collage
     collage_image = np.zeros((collage_height, collage_width, 3), dtype=np.uint8)
     collage_image.fill(255)  # Remplir l'image avec du blanc
@@ -269,142 +260,82 @@ def create_random_box(image_paths, collage_width, collage_height):
     # Create a mask with the same size
     collage_masque = np.zeros((collage_height, collage_width, 3), dtype=np.uint8)
     collage_masque.fill(255)
+    return collage_image, collage_masque
 
-    # Select a random arrow
-    numFleche = np.random.randint(0, 7)
+def prepare_picture(image_path):
+    image = cv2.imread(image_path)
+    # Crop the image to remove white borders
+    for i in range(image.shape[0]):
+        if np.any(image[i] != 255):
+            image = image[i:]
+            break
+    for i in range(image.shape[0] - 1, 0, -1):
+        if np.any(image[i] != 255):
+            image = image[:i]
+            break
+    for i in range(image.shape[1]):
+        if np.any(image[:, i] != 255):
+            image = image[:, i:]
+            break
+    for i in range(image.shape[1] - 1, 0, -1):
+        if np.any(image[:, i] != 255):
+            image = image[:, :i]
+            break
 
-    # Charger et placer chaque image aux positions spécifiées
-    n = 0  # Counter for the number of images placed
-    positions = []  # Stores image positions as [x, y, img_width, img_height] with x, y left lower corner position
-    for image_path in image_paths:
-        image = cv2.imread(image_path)
+    # 50% chance to add a text label under the image
+    if np.random.randint(0, 2) == 1:
+        # enlarges the lower part of the image by 40 pixels
+        image = np.concatenate((image, np.zeros((30, image.shape[1], 3), dtype=np.uint8) + 255), axis=0)
 
-        # Crop the image to remove white borders
-        for i in range(image.shape[0]):
-            if np.any(image[i] != 255):
-                image = image[i:]
-                break
-        for i in range(image.shape[0] - 1, 0, -1):
-            if np.any(image[i] != 255):
-                image = image[:i]
-                break
-        for i in range(image.shape[1]):
-            if np.any(image[:, i] != 255):
-                image = image[:, i:]
-                break
-        for i in range(image.shape[1] - 1, 0, -1):
-            if np.any(image[:, i] != 255):
-                image = image[:, :i]
-                break
+        # add text to the image
+        font = np.random.randint(1, 7)
+        font_scale = np.random.randint(7, 18) / 20
+        cv2.putText(image, formules[np.random.randint(0, len(formules))] + " (m/z = " + str(
+            np.random.randint(2, 300)) + ")", (10, image.shape[0] - 5), font, font_scale, (0, 0, 0), 1, cv2.LINE_AA)
 
-        # 50% chance to add a text label under the image
-        if np.random.randint(0, 2) == 1:
-            # enlarges the lower part of the image by 40 pixels
-            image = np.concatenate((image, np.zeros((30, image.shape[1], 3), dtype=np.uint8) + 255), axis=0)
+    return image
 
-            # add text to the image
-            font = np.random.randint(1, 7)
-            font_scale = np.random.randint(5, 15) /10
-            cv2.putText(image, formules[np.random.randint(0, len(formules))] + " (m/z = " + str(
-                np.random.randint(2, 300)) + ")", (10, image.shape[0] - 5), font, font_scale, (0, 0, 0), 1, cv2.LINE_AA)
+def calculate_possible_positions(collage_image, positions, img_width, img_height, n):
+    """
+    returns a number corresponding to a random starter picture with a list of possible positions the next picture could be placed
+    returns -1 and [] if there is no possible position for any of the pictures
+    [x1, y1, direction, buffer_between_pictures] this is what elements look like in possible_position
+    """
+    collage_height, collage_width, _ = collage_image.shape
+    already_placed_pictures = list(range(n))
+    np.random.shuffle(already_placed_pictures)
+    for i in already_placed_pictures:
+        positionsPossibles = []
+        for j in range(len(directions)):
+            # look in all random directions to see if there is space
+            buffer_between_pictures = np.random.randint(100, 150)
+            # location of the area is tested
+            if directions[j][1] == 1:
+                x1 = positions[i][0] + positions[i][2] + buffer_between_pictures
+            elif directions[j][1] == -1:
+                x1 = positions[i][0] - img_width - buffer_between_pictures
+            else:
+                x1 = positions[i][0]
+            if directions[j][0] == 1:
+                y1 = positions[i][1] + positions[i][3] + buffer_between_pictures
+            elif directions[j][0] == -1:
+                y1 = positions[i][1] - img_height - buffer_between_pictures
+            else:
+                y1 = positions[i][1]
 
-        img_height, img_width, _ = image.shape
+            # if the zone is in the collage
+            if x1 >= 0 and x1 + img_width <= collage_width and y1 >= 0 and y1 + img_height <= collage_height:
+                # check if the zone is white
+                zone = collage_image[y1:y1 + img_height, x1:x1 + img_width]
 
-        angle = 0
-        direction = 0
-        e = 0
-        xi, yi, wi, hi = 0, 0, 0, 0
+                if np.all(zone == 255):
+                    positionsPossibles.append([x1, y1, j, buffer_between_pictures])
+        if len(positionsPossibles) != 0:
+            return i, positionsPossibles
 
-        # Place the first image at a random position
-        if n == 0:
-            # x and y are the left lower corner
-            x, y = np.random.randint(0, collage_width - img_width), np.random.randint(0, collage_height - img_height)
-            positions.append([x, y, img_width, img_height])
-        else:
-            # Generate possible positions based on previous images
-            positionsPossibles = [] # [x1, y1, j, espacement] this is what elements look like
-            for i in range(n):
-                positionsPossibles.append([])
-                for j in range(len(directions)):
-                    # look in all random directions to see if there is space
-                    buffer_between_pictures = np.random.randint(100, 150)
-                    # location of the area is tested
-                    if directions[j][1] == 1:
-                        x1 = positions[i][0] + positions[i][2] + buffer_between_pictures
-                    elif directions[j][1] == -1:
-                        x1 = positions[i][0] - img_width - buffer_between_pictures
-                    else:
-                        x1 = positions[i][0]
-                    if directions[j][0] == 1:
-                        y1 = positions[i][1] + positions[i][3] + buffer_between_pictures
-                    elif directions[j][0] == -1:
-                        y1 = positions[i][1] - img_height - buffer_between_pictures
-                    else:
-                        y1 = positions[i][1]
+    return -1, []
 
-                    # if the zone is in the collage
-                    if x1 >= 0 and x1 + img_width <= collage_width and y1 >= 0 and y1 + img_height <= collage_height:
-                        # check if the zone is white
-                        zone = collage_image[y1:y1 + img_height, x1:x1 + img_width]
-                        if np.all(zone == 255):
-                            positionsPossibles[i].append([x1, y1, j, buffer_between_pictures])
-
-            # if no zone is possible, move on to the next image
-            possible = False
-            for k in range(len(positionsPossibles)):
-                if len(positionsPossibles[k]) > 0:
-                    possible = True
-
-            if not possible:
-                print(f"L'image {image_path} ne peut pas être placée dans le collage.")
-                continue
-
-            # select a random zone from the list of possible zones
-            zone = np.random.randint(0, len(positionsPossibles))
-            while len(positionsPossibles[zone]) == 0:
-                zone = np.random.randint(0, len(positionsPossibles))
-            x, y, direction, e = positionsPossibles[zone][np.random.randint(0, len(positionsPossibles[zone]))]
-            xi, yi, wi, hi = positions[zone]
-            positions.append([x, y, img_width, img_height])
-
-            angle = transformations[directions[direction]]
-
-        # We calculate the size of the image to be pasted. In theory, this shouldn't change anything, as we've made sure that the image can be pasted in its entirety.
-        if x + img_width > collage_width:
-            img_width = collage_width - x
-        if y + img_height > collage_height:
-            img_height = collage_height - y
-
-        # in theory, these cases shouldn't happen
-        if img_width <= 0 or img_height <= 0:
-            print(
-                f"L'image {image_path} ne peut pas être placée aux coordonnées ({x}, {y}) car elle dépasse les limites du collage.")
-            continue
-
-        # image = cv2.resize(image, (img_width, img_height))
-
-        # crop image to fit collage size
-        image = image[:img_height, :img_width]
-
-        # Paste image into collage
-        collage_image[y:y + img_height, x:x + img_width] = image
-
-
-        # draw arrow or plus between the pictures
-        if n > 0:
-            # 10% chance of drawing a arrow
-            if np.random.randint(0, 10) == 0:
-
-                draw_plus(collage_image, yi, xi, hi, wi, direction, e)
-            else :
-                draw_arrow(collage_image, collage_masque, numFleche, angle, e, yi, xi, hi, wi, direction)
-
-        # draw a mark arount the picture
-        if np.random.randint(0, 10) == 0:
-            draw_frames(collage_image, x, y, img_width, img_height)
-
-        n += 1
-
+def end_changes(collage_image, collage_masque):
     # Remove outer white borders
     for i in range(collage_image.shape[0]):
         if np.any(collage_image[i] != 255):
@@ -442,6 +373,110 @@ def create_random_box(image_paths, collage_width, collage_height):
     _, collage_masque = cv2.threshold(collage_masque, 127, 255, cv2.THRESH_BINARY)
     # Invert the mask
     collage_masque = 255 - collage_masque
+
+    return collage_image, collage_masque
+
+
+def create_random_box(image_paths, collage_width, collage_height):
+    import numpy as np
+    import cv2
+
+    # get empty slate
+    collage_image, collage_masque = init(collage_width, collage_height)
+
+    # Select a random arrow
+    numFleche = np.random.randint(0, 7)
+
+    n = 0  # Counter for the number of images placed
+    positions = []  # Stores image positions as [x, y, img_width, img_height] with x, y left lower corner position
+
+    for image_path in image_paths:
+        image = prepare_picture(image_path)
+        img_height, img_width, _ = image.shape
+
+        direction = 0
+        buffer_between_pictures = 0
+        xi, yi, wi, hi = 0, 0, 0, 0
+
+        # Place the first image at a random position
+        if n == 0:
+            # x and y are the left lower corner
+            x, y = np.random.randint(0, collage_width - img_width), np.random.randint(0, collage_height - img_height)
+            positions.append([x, y, img_width, img_height])
+        else:
+            # try for every already placed picture if there is space for the next picture in any direction
+            starter , positionsPossibles = calculate_possible_positions(collage_image, positions, img_width, img_height, n)
+
+
+
+            if starter == -1:
+                print(f"L'image {image_path} ne peut pas être placée dans le collage.")
+                continue
+
+
+            # select a random position from the list of possible positions
+            x_new, y_new, direction, buffer_between_pictures = positionsPossibles[np.random.randint(0, len(positionsPossibles))]
+            x_starter, y_starter, w_starter, h_starter = positions[starter]
+            positions.append([x, y, img_width, img_height])
+
+            # calculate the space between the two pictures
+            x_between, y_between, w_between, h_between = 0, 0, 0, 0
+
+            w_between, h_between  = buffer_between_pictures , buffer_between_pictures
+
+            if directions[direction][0] == 1:
+                y_between = y_starter + buffer_between_pictures + h_starter
+            if directions[direction][0] == -1:
+                y_between = y_starter - buffer_between_pictures - img_height
+            if directions[direction][0] == 0:
+                y_between = y_starter
+
+
+            if directions[direction][1] == 1:
+                y_between = y_starter + buffer_between_pictures + h_starter
+            if directions[direction][1] == -1:
+                y_between = y_starter - buffer_between_pictures - img_height
+                #
+            if directions[direction][1] == 0:
+                x_between = x_starter
+
+
+        # We calculate the size of the image to be pasted. In theory, this shouldn't change anything, as we've made sure that the image can be pasted in its entirety.
+        if x + img_width > collage_width:
+            img_width = collage_width - x
+        if y + img_height > collage_height:
+            img_height = collage_height - y
+
+        # in theory, these cases shouldn't happen
+        if img_width <= 0 or img_height <= 0:
+            print(
+                f"L'image {image_path} ne peut pas être placée aux coordonnées ({x}, {y}) car elle dépasse les limites du collage.")
+            continue
+
+        # crop image to fit collage size
+        image = image[:img_height, :img_width]
+
+        # Paste image into collage
+        collage_image[y:y + img_height, x:x + img_width] = image
+
+
+        # draw arrow or plus between the pictures
+        if n > 0:
+            # 10% chance of drawing a plus
+            if np.random.randint(0, 10) == 0:
+
+                draw_plus(collage_image, yi, xi, hi, wi, direction, buffer_between_pictures)
+            else :
+                draw_arrow(collage_image, collage_masque, numFleche, buffer_between_pictures, yi, xi, hi, wi, direction)
+
+        # draw a mark arount the picture
+        if np.random.randint(0, 10) == 0:
+            draw_frames(collage_image, x, y, img_width, img_height)
+
+        n += 1
+
+    collage_image, collage_masque = end_changes( collage_image, collage_masque)
+
 
     return collage_image, collage_masque
 
