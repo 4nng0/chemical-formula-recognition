@@ -202,6 +202,7 @@ def draw_arrow(collage_image, collage_masque, numFleche, e, yi, xi, hi, wi, dire
                                                                           c] + (
                                                       masqueAlpha / 255.0) * masqueBgr[:, :, c]
 
+
 def draw_frames(collage_image, x, y, img_width, img_height):
     option = np.random.choice(["solid_box", "dotted_box", "parentheses"])  # all are same probability
     padding = 50
@@ -396,7 +397,8 @@ def create_random_box(image_paths, collage_width, collage_height):
 
         direction = 0
         buffer_between_pictures = 0
-        xi, yi, wi, hi = 0, 0, 0, 0
+
+        x_starter, y_starter, w_starter, h_starter = 0, 0, 0, 0
 
         # Place the first image at a random position
         if n == 0:
@@ -417,6 +419,7 @@ def create_random_box(image_paths, collage_width, collage_height):
             # select a random position from the list of possible positions
             x_new, y_new, direction, buffer_between_pictures = positionsPossibles[np.random.randint(0, len(positionsPossibles))]
             x_starter, y_starter, w_starter, h_starter = positions[starter]
+            x, y = x_new, y_new
             positions.append([x, y, img_width, img_height])
 
             # calculate the space between the two pictures
@@ -465,9 +468,9 @@ def create_random_box(image_paths, collage_width, collage_height):
             # 10% chance of drawing a plus
             if np.random.randint(0, 10) == 0:
 
-                draw_plus(collage_image, yi, xi, hi, wi, direction, buffer_between_pictures)
+                draw_plus(collage_image, y_starter, x_starter, h_starter, w_starter, direction, buffer_between_pictures)
             else :
-                draw_arrow(collage_image, collage_masque, numFleche, buffer_between_pictures, yi, xi, hi, wi, direction)
+                draw_arrow(collage_image, collage_masque, numFleche, buffer_between_pictures, y_starter, x_starter, h_starter, w_starter, direction)
 
         # draw a mark arount the picture
         if np.random.randint(0, 10) == 0:
