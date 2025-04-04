@@ -127,12 +127,12 @@ transformations = {
 # different style of chemical formulas
 # text at all different places and in diffent styles
 # random bits that are not arrows
-# plus where arrows could be
 # arrows coming together
 # funnel thing
 
 # DONE
 # more complex boxes
+# plus where arrows could be
 #
 
 def draw_arrow(collage_image, collage_masque, numFleche, e, yi, xi, hi, wi, direction):
@@ -202,7 +202,6 @@ def draw_arrow(collage_image, collage_masque, numFleche, e, yi, xi, hi, wi, dire
                                                                           c] + (
                                                       masqueAlpha / 255.0) * masqueBgr[:, :, c]
 
-
 def draw_frames(collage_image, x, y, img_width, img_height):
     option = np.random.choice(["solid_box", "dotted_box", "parentheses"])  # all are same probability
     padding = 50
@@ -243,15 +242,13 @@ def draw_frames(collage_image, x, y, img_width, img_height):
                  thickness)
         cv2.line(collage_image, bottom_right, (bottom_right[0] - length, bottom_right[1]), color, thickness)
 
-def draw_plus(collage_image, yi, xi, hi, wi, direction, m):
-    pass
-    my, mx = round( yi + 0.5 * hi) , round(xi + 0.5 * wi)
+def draw_plus(collage_image, x_between, y_between, buffer_between_pictures):
+    my, mx = round( y_between + 0.5 * buffer_between_pictures) , round(x_between + 0.5 * buffer_between_pictures)
     font = np.random.randint(1, 7)
     font_scale = np.random.randint(5, 15) / 10
 
     cv2.putText(collage_image, "+", (mx, my), font, font_scale, (0, 0, 0), 3, cv2.LINE_AA)
 
-    pass
 
 def init(collage_width, collage_height):
     # Create a blank white canvas for the collage
@@ -427,21 +424,42 @@ def create_random_box(image_paths, collage_width, collage_height):
 
             w_between, h_between  = buffer_between_pictures , buffer_between_pictures
 
+            if directions[direction][1] == 1:
+                x_between = x_starter + w_starter
+            if directions[direction][1] == -1:
+                #
+                x_between = x_starter - buffer_between_pictures
+            if directions[direction][1] == 0:
+                x_between = x_starter
+
+
             if directions[direction][0] == 1:
-                y_between = y_starter + buffer_between_pictures + h_starter
+                #
+                y_between = y_starter + h_starter
             if directions[direction][0] == -1:
-                y_between = y_starter - buffer_between_pictures - img_height
+                y_between = y_starter - buffer_between_pictures
+                #
             if directions[direction][0] == 0:
                 y_between = y_starter
 
+            # cv2.rectangle(collage_image, (x_starter, y_starter + h_starter), (x_starter + w_starter, y_starter),
+            #                  (255, 0, 0), 3)
+            # cv2.rectangle(collage_image, (x_between, y_between + h_between), (x_between + h_between, y_between),
+            #                  (0, 255, 0), 3)
+            # cv2.rectangle(collage_image, (x_new, y_new + img_height), (x_new+ img_width, y_new),
+            #                  (0, 0, 255), 3)
+            # 10% chance of drawing a plus
 
-            if directions[direction][1] == 1:
-                y_between = y_starter + buffer_between_pictures + h_starter
-            if directions[direction][1] == -1:
-                y_between = y_starter - buffer_between_pictures - img_height
-                #
-            if directions[direction][1] == 0:
-                x_between = x_starter
+            # draw the arrows or plus
+            if np.random.randint(0, 10) == 0:
+
+                draw_plus(collage_image, x_between, y_between, buffer_between_pictures)
+            else :
+                draw_arrow(collage_image, collage_masque, numFleche, buffer_between_pictures, y_starter, x_starter, h_starter, w_starter, direction)
+
+
+
+
 
 
         # We calculate the size of the image to be pasted. In theory, this shouldn't change anything, as we've made sure that the image can be pasted in its entirety.
@@ -463,14 +481,7 @@ def create_random_box(image_paths, collage_width, collage_height):
         collage_image[y:y + img_height, x:x + img_width] = image
 
 
-        # draw arrow or plus between the pictures
-        if n > 0:
-            # 10% chance of drawing a plus
-            if np.random.randint(0, 10) == 0:
 
-                draw_plus(collage_image, y_starter, x_starter, h_starter, w_starter, direction, buffer_between_pictures)
-            else :
-                draw_arrow(collage_image, collage_masque, numFleche, buffer_between_pictures, y_starter, x_starter, h_starter, w_starter, direction)
 
         # draw a mark arount the picture
         if np.random.randint(0, 10) == 0:
