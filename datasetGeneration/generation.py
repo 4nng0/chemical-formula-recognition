@@ -145,9 +145,6 @@ def draw_arrow(collage_image, collage_masque, x_between, y_between, h_between, w
     fleche = cv2.imread(f"arrowSource/{numFleche}_{angleImage}.png", cv2.IMREAD_UNCHANGED)
     masque = cv2.imread(f"arrowMask/{numFleche}_{angleImage}.png", cv2.IMREAD_UNCHANGED)
 
-    if np.random.randint(0, 2) == 1:
-        fleche = cv2.flip(fleche, -1)
-        masque = cv2.flip(masque, -1)
 
     # leave a margin to prevent the arrow from sticking
     y_margin = round(np.random.randint(10, 20)/100 * h_between)
@@ -227,13 +224,11 @@ def draw_frames(collage_image, x, y, img_width, img_height):
         cv2.line(collage_image, bottom_right, (bottom_right[0] - length, bottom_right[1]), color, thickness)
 
 def draw_plus(collage_image, x_between, y_between, h_between, w_between):
-
-    my, mx = round( y_between + 0.5 * h_between) , round(x_between + 0.5 * y_between)
+    my, mx = round( y_between + 0.5 * h_between) , round(x_between + 0.5 * w_between)
     font = np.random.randint(1, 7)
-    font_scale = np.random.randint(3, 12) / 10
+    font_scale = np.random.randint(3, 10) / 10
 
     cv2.putText(collage_image, "+", (mx, my), font, font_scale, (0, 0, 0), 3, cv2.LINE_AA)
-
 def init(collage_width, collage_height):
     # Create a blank white canvas for the collage
     collage_image = np.zeros((collage_height, collage_width, 3), dtype=np.uint8)
@@ -358,6 +353,39 @@ def end_changes(collage_image, collage_masque):
 
     return collage_image, collage_masque
 
+def calculate_space_between(x_new, y_new, direction, buffer_between_pictures, x_starter, y_starter, w_starter, h_starter, img_height, img_width):
+    x_between, y_between = 0, 0
+
+    h_between = min(img_height, h_starter)
+    w_between = min(img_width, w_starter)
+
+    if directions[direction][1] == 1:
+        x_between = x_starter + w_starter
+        w_between = buffer_between_pictures
+    if directions[direction][1] == -1:
+        x_between = x_starter - buffer_between_pictures
+        w_between = buffer_between_pictures
+    if directions[direction][1] == 0:
+        x_between = x_starter
+
+    if directions[direction][0] == 1:
+        y_between = y_starter + h_starter
+        h_between = buffer_between_pictures
+    if directions[direction][0] == -1:
+        y_between = y_starter - buffer_between_pictures
+        h_between = buffer_between_pictures
+    if directions[direction][0] == 0:
+        y_between = y_starter
+
+    #cv2.rectangle(collage_image, (x_starter, y_starter + h_starter), (x_starter + w_starter, y_starter),
+    #              (255, 0, 0), 3)
+    #cv2.rectangle(collage_image, (x_between, y_between + h_between), (x_between + w_between, y_between),
+    #              (0, 255, 0), 3)
+    #cv2.rectangle(collage_image, (x_new, y_new + img_height), (x_new + img_width, y_new),
+    #              (0, 0, 255), 3)
+
+    return x_between, y_between, h_between, w_between
+
 def create_random_box(image_paths, collage_width, collage_height):
     import numpy as np
 
@@ -396,42 +424,9 @@ def create_random_box(image_paths, collage_width, collage_height):
 
 
             # calculate the space between the two pictures
-            x_between, y_between, w_between, h_between = 0, 0, 0, 0
-
-            h_between = min(img_height, h_starter)
-            w_between = min(img_width, w_starter)
+            x_between, y_between, h_between, w_between = calculate_space_between(x_new, y_new, direction, buffer_between_pictures, x_starter, y_starter, w_starter, h_starter, img_height, img_width)
 
 
-
-            if directions[direction][1] == 1:
-                x_between = x_starter + w_starter
-                w_between = buffer_between_pictures
-            if directions[direction][1] == -1:
-                x_between = x_starter - buffer_between_pictures
-                w_between = buffer_between_pictures
-            if directions[direction][1] == 0:
-                x_between = x_starter
-
-
-            if directions[direction][0] == 1:
-                y_between = y_starter + h_starter
-                h_between = buffer_between_pictures
-            if directions[direction][0] == -1:
-                y_between = y_starter - buffer_between_pictures
-                h_between = buffer_between_pictures
-            if directions[direction][0] == 0:
-                y_between = y_starter
-
-
-
-
-            cv2.rectangle(collage_image, (x_starter, y_starter + h_starter), (x_starter + w_starter, y_starter),
-                              (255, 0, 0), 3)
-            cv2.rectangle(collage_image, (x_between, y_between + h_between), (x_between + w_between, y_between),
-                              (0, 255, 0), 3)
-            cv2.rectangle(collage_image, (x_new, y_new + img_height), (x_new+ img_width, y_new),
-                             (0, 0, 255), 3)
-            # 10% chance of drawing a plus
 
             # draw the arrows or plus
             if np.random.randint(0, 10) == 0:
