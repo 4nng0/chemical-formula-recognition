@@ -5,8 +5,6 @@ from datasetGeneration.generation import create_random_box
 if __name__ == "__main__":
     for k in range(10):
 
-        print('starting..')
-
         # List of image paths
         image_paths = []
         nbMolecules = np.random.randint(5, 15)
@@ -38,5 +36,3 @@ if __name__ == "__main__":
         # Save collage
         cv2.imwrite(f'data/images/{k}.jpg', collage)
         cv2.imwrite(f'data/masks/{k}.jpg', masque)
-
-        print("finishing..")
