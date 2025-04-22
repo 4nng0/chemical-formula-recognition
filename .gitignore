@@ -32,3 +32,4 @@ htmlcov/
 !*.keras
 new_scripts/tempCodeRunnerFile.py
 /datasetGeneration/chemicalStructureSource/
+/data/
