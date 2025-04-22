@@ -387,8 +387,6 @@ def calculate_space_between(x_new, y_new, direction, buffer_between_pictures, x_
     return x_between, y_between, h_between, w_between
 
 def create_random_box(image_paths, collage_width, collage_height):
-    import numpy as np
-
     # get empty slate
     collage_image, collage_masque = init(collage_width, collage_height)
 
