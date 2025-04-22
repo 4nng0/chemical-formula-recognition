@@ -31,3 +31,4 @@ htmlcov/
 # Keras is for the algorithm
 !*.keras
 new_scripts/tempCodeRunnerFile.py
+/datasetGeneration/chemicalStructureSource/
