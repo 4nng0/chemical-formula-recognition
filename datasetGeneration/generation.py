@@ -1,5 +1,7 @@
 import cv2
 import numpy as np
+from PIL import ImageFont, ImageDraw, Image#
+import os
 
 formules = [
     "BH3",
@@ -135,6 +137,48 @@ transformations = {
 # plus where arrows could be
 #
 
+def text_to_image(text, font_path, font_size=40, text_color=(0, 0, 0)):
+    font = ImageFont.truetype(font_path, font_size)
+
+    # Textgröße berechnen mit getbbox
+    bbox = font.getbbox(text)
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+
+    # Neues Bild in passender Größe
+    img = Image.new("RGB", (width, height), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(img)
+
+    # Text zeichnen (ggf. y-offset wegen negativer bbox)
+    draw.text((-bbox[0], -bbox[1]), text, font=font, fill=text_color)
+
+    return np.array(img)
+
+
+def center_image_on_canvas(image, canvas_width, canvas_height):
+    h, w = image.shape[:2]
+
+
+    if h/w > canvas_height/canvas_width:
+        # image is taller than canvas
+        new_width = int(canvas_height * w / h)
+        new_height = canvas_height
+        hight_offset = 0
+        width_offset = int((canvas_width - new_width) / 2)
+    else:
+        new_width = canvas_width
+        new_height = int(canvas_width * h / w)
+        hight_offset = int((canvas_height - new_height) / 2)
+        width_offset = 0
+
+    image = cv2.resize(image, (new_width, new_height))
+    canvas =  np.ones((canvas_height, canvas_width, 4), dtype=np.uint8)
+
+
+    canvas[hight_offset:hight_offset + new_height, width_offset:width_offset + new_width] = image
+
+    return canvas
+
 def draw_arrow(collage_image, collage_masque, x_between, y_between, h_between, w_between, direction, numFleche):
     # load the random arrow in the right direction
     angle = transformations[directions[direction]]  # gives the number of degrees depending on the direction
@@ -154,8 +198,8 @@ def draw_arrow(collage_image, collage_masque, x_between, y_between, h_between, w
     new_width = max(1, w_between - 2 * x_margin)
     new_height = max(1, h_between - 2 * y_margin)
 
-    fleche = cv2.resize(fleche, (new_width, new_height))
-    masque = cv2.resize(masque, (new_width, new_height))
+    fleche = center_image_on_canvas(fleche, new_width, new_height)
+    masque = center_image_on_canvas(masque, new_width, new_height)
 
 
     # draw the arrow on the collage considering the opacity of the image
@@ -224,11 +268,20 @@ def draw_frames(collage_image, x, y, img_width, img_height):
         cv2.line(collage_image, bottom_right, (bottom_right[0] - length, bottom_right[1]), color, thickness)
 
 def draw_plus(collage_image, x_between, y_between, h_between, w_between):
-    my, mx = round( y_between + 0.5 * h_between) , round(x_between + 0.5 * w_between)
-    font = np.random.randint(1, 7)
-    font_scale = np.random.randint(3, 10) / 10
+    font_scale = np.random.randint(20, 50)
+    h_text, w_text = -1, -1
 
-    cv2.putText(collage_image, "+", (mx, my), font, font_scale, (0, 0, 0), 3, cv2.LINE_AA)
+    while h_buffer < 0 or w_buffer < 0 :
+        font_scale = round(font_scale / 1,5)
+        text = text_to_image("+", "RozhaOne-Regular.ttf", font_scale)
+        h_text, w_text, _ = text.shape
+        h_buffer = round((h_between - h_text) / 2)
+        w_buffer = round((w_between - w_text) / 2)
+
+    collage_image[y_between + h_buffer:y_between+h_text+ h_buffer, x_between + w_buffer : x_between+w_text+ w_buffer ] = text
+
+
+
 def init(collage_width, collage_height):
     # Create a blank white canvas for the collage
     collage_image = np.zeros((collage_height, collage_width, 3), dtype=np.uint8)
@@ -353,7 +406,7 @@ def end_changes(collage_image, collage_masque):
 
     return collage_image, collage_masque
 
-def calculate_space_between(x_new, y_new, direction, buffer_between_pictures, x_starter, y_starter, w_starter, h_starter, img_height, img_width):
+def calculate_space_between(collage_image, x_new, y_new, direction, buffer_between_pictures, x_starter, y_starter, w_starter, h_starter, img_height, img_width):
     x_between, y_between = 0, 0
 
     h_between = min(img_height, h_starter)
@@ -377,12 +430,12 @@ def calculate_space_between(x_new, y_new, direction, buffer_between_pictures, x_
     if directions[direction][0] == 0:
         y_between = y_starter
 
-    #cv2.rectangle(collage_image, (x_starter, y_starter + h_starter), (x_starter + w_starter, y_starter),
-    #              (255, 0, 0), 3)
-    #cv2.rectangle(collage_image, (x_between, y_between + h_between), (x_between + w_between, y_between),
-    #              (0, 255, 0), 3)
-    #cv2.rectangle(collage_image, (x_new, y_new + img_height), (x_new + img_width, y_new),
-    #              (0, 0, 255), 3)
+    cv2.rectangle(collage_image, (x_starter, y_starter + h_starter), (x_starter + w_starter, y_starter),
+                  (255, 0, 0), 3)
+    cv2.rectangle(collage_image, (x_between, y_between + h_between), (x_between + w_between, y_between),
+                  (0, 255, 0), 3)
+    cv2.rectangle(collage_image, (x_new, y_new + img_height), (x_new + img_width, y_new),
+                  (0, 0, 255), 3)
 
     return x_between, y_between, h_between, w_between
 
@@ -422,19 +475,13 @@ def create_random_box(image_paths, collage_width, collage_height):
 
 
             # calculate the space between the two pictures
-            x_between, y_between, h_between, w_between = calculate_space_between(x_new, y_new, direction, buffer_between_pictures, x_starter, y_starter, w_starter, h_starter, img_height, img_width)
-
-
+            x_between, y_between, h_between, w_between = calculate_space_between(collage_image, x_new, y_new, direction, buffer_between_pictures, x_starter, y_starter, w_starter, h_starter, img_height, img_width)
 
             # draw the arrows or plus
             if np.random.randint(0, 10) == 0:
                 draw_plus(collage_image, x_between, y_between,  h_between, w_between)
             else :
                 draw_arrow(collage_image, collage_masque, x_between, y_between, h_between, w_between, direction, numFleche)
-
-
-
-
 
 
         # We calculate the size of the image to be pasted. In theory, this shouldn't change anything, as we've made sure that the image can be pasted in its entirety.

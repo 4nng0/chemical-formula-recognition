@@ -3,6 +3,7 @@ import cv2
 from datasetGeneration.generation import create_random_box
 
 if __name__ == "__main__":
+
     for k in range(10):
 
         # List of image paths
