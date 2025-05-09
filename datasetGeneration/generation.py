@@ -1,7 +1,12 @@
 import cv2
 import numpy as np
 from PIL import ImageFont, ImageDraw, Image#
-import os
+import random
+import string
+
+
+basic_symbols = "{}" #string.ascii_letters + string.digits + " !@#$%^&*()-_{}[];:,.<>?/|\\`~'\""
+
 
 formules = [
     "BH3",
@@ -112,6 +117,7 @@ formules = [
 ]
 
 directions = [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+number_of_fonts = 15
 
 transformations = {
     (0, 1): 0,  # Droite
@@ -125,35 +131,107 @@ transformations = {
 }
 
 # TODO LIST
-# different arrow styles
-# different style of chemical formulas
 # text at all different places and in diffent styles
 # random bits that are not arrows
-# arrows coming together
-# funnel thing
 
 # DONE
 # more complex boxes
 # plus where arrows could be
-#
+# different text styles
+
+def draw_random_shapes(image):
+
+    color = (0,0,0)
+    width = image.shape[0]
+    height = image.shape[1]
+
+        # Zufällige Form
+    shape_type = random.choice(['rectangle', 'circle', 'line', 'polygon'])
+
+    if shape_type == 'rectangle':
+        # Zufällige Position und Größe für das Rechteck
+        pt1 = (random.randint(0, width), random.randint(0, height))
+        pt2 = (random.randint(0, width), random.randint(0, height))
+        cv2.rectangle(image, pt1, pt2, color, -1)  # -1 füllt das Rechteck
+
+    elif shape_type == 'circle':
+        # Zufälliger Mittelpunkt und Radius
+        center = (random.randint(0, width), random.randint(0, height))
+        radius = random.randint(10, 100)
+        cv2.circle(image, center, radius, color, -1)
+
+    elif shape_type == 'line':
+        # Zufällige Punkte für die Linie
+        pt1 = (random.randint(0, width), random.randint(0, height))
+        pt2 = (random.randint(0, width), random.randint(0, height))
+        cv2.line(image, pt1, pt2, color, random.randint(1, 10))  # zufällige Linienstärke
+
+    elif shape_type == 'polygon':
+        # Zufällige Anzahl an Punkten für das Polygon
+        num_points = random.randint(3, 6)  # zwischen 3 und 6 Ecken
+        points = [(random.randint(0, width), random.randint(0, height)) for _ in range(num_points)]
+        cv2.polylines(image, [np.array(points)], isClosed=True, color=color, thickness=random.randint(1, 5))
+
+def make_noise():
+    option = np.random.choice(["Figure", "Text", "Letter"])
+
+    if option == "Letter":
+        font_scale = np.random.randint(20, 60)
+        font_path  = f"Fonts/{np.random.randint(1, number_of_fonts)}.ttf"
+        return text_to_image(random.choice(basic_symbols),  font_path, font_scale)
+
+    if option == "Text":
+        font_scale = np.random.randint(10, 30)
+        font_path  = f"Fonts/{np.random.randint(1, number_of_fonts)}.ttf"
+        k = np.random.randint(3, 15)
+        text = ''.join(random.choices(basic_symbols, k=k))
+        return text_to_image(text,  font_path, font_scale)
+
+    if option == "Figure":
+        image = np.full((np.random.randint(40, 100), np.random.randint(40, 100), 3), (255, 255, 255), dtype=np.uint8)
+        draw_random_shapes(image)
+        return image
+
+def place_noise(collage_image, noise):
+    x_orig, y_orig = np.random.randint(0, collage_image.shape[0] - noise.shape[0]), np.random.randint(0, collage_image.shape[1] - noise.shape[1])
+    x, y = x_orig, y_orig
+    y_distance, x_distance = 0, 0
+    jumps = 50
+    swich = 1
+    max_val = round(np.max([collage_image.shape[0], collage_image.shape[1]]) / jumps)
+    if np.mean(collage_image[x: x + noise.shape[0], y: y + noise.shape[1]]) == 255:
+        collage_image[x: x + noise.shape[0], y: y + noise.shape[1]] = noise
+        return
+    for a in range(1, max_val):
+        swich = swich * -1
+
+        for b in range(1, a):
+            x_distance += jumps * swich
+            if np.array_equal(collage_image[x + x_distance: x + x_distance+ noise.shape[0], y+ y_distance: y+ y_distance + noise.shape[1]], noise) and np.mean(collage_image[x + x_distance: x + x_distance+ noise.shape[0], y+ y_distance: y+ y_distance + noise.shape[1]]) == 255:
+                collage_image[x: x + noise.shape[0], y: y + noise.shape[1]] = noise
+                return
+
+        for b in range(1, a):
+            y_distance += jumps * swich
+            if np.array_equal(collage_image[x + x_distance: x + x_distance+ noise.shape[0], y+ y_distance: y+ y_distance + noise.shape[1]], noise) and np.mean(collage_image[x + x_distance: x + x_distance+ noise.shape[0], y+ y_distance: y+ y_distance + noise.shape[1]]) == 255:
+                collage_image[x: x + noise.shape[0], y: y + noise.shape[1]] = noise
+                return
 
 def text_to_image(text, font_path, font_size=40, text_color=(0, 0, 0)):
     font = ImageFont.truetype(font_path, font_size)
 
-    # Textgröße berechnen mit getbbox
+    # calculate necessary size with  getbbox
     bbox = font.getbbox(text)
     width = bbox[2] - bbox[0]
     height = bbox[3] - bbox[1]
 
-    # Neues Bild in passender Größe
     img = Image.new("RGB", (width, height), (255, 255, 255, 0))
     draw = ImageDraw.Draw(img)
 
-    # Text zeichnen (ggf. y-offset wegen negativer bbox)
+    # Text is drawn
     draw.text((-bbox[0], -bbox[1]), text, font=font, fill=text_color)
 
     return np.array(img)
-
 
 def center_image_on_canvas(image, canvas_width, canvas_height):
     h, w = image.shape[:2]
@@ -229,7 +307,7 @@ def draw_arrow(collage_image, collage_masque, x_between, y_between, h_between, w
 
 def draw_frames(collage_image, x, y, img_width, img_height):
     option = np.random.choice(["solid_box", "dotted_box", "parentheses"])  # all are same probability
-    padding = 50
+    padding = np.random.randint(25, 50)
     color = (0, 0, 0)
     thickness = np.random.randint(1, 5)
 
@@ -269,18 +347,17 @@ def draw_frames(collage_image, x, y, img_width, img_height):
 
 def draw_plus(collage_image, x_between, y_between, h_between, w_between):
     font_scale = np.random.randint(20, 50)
-    h_text, w_text = -1, -1
+    h_buffer, w_buffer = -1, -1
+    font = np.random.randint(1, number_of_fonts)
 
     while h_buffer < 0 or w_buffer < 0 :
         font_scale = round(font_scale / 1,5)
-        text = text_to_image("+", "RozhaOne-Regular.ttf", font_scale)
+        text = text_to_image("+", f"Fonts/{font}.ttf", font_scale)
         h_text, w_text, _ = text.shape
         h_buffer = round((h_between - h_text) / 2)
         w_buffer = round((w_between - w_text) / 2)
 
     collage_image[y_between + h_buffer:y_between+h_text+ h_buffer, x_between + w_buffer : x_between+w_text+ w_buffer ] = text
-
-
 
 def init(collage_width, collage_height):
     # Create a blank white canvas for the collage
@@ -318,10 +395,14 @@ def prepare_picture(image_path):
         image = np.concatenate((image, np.zeros((30, image.shape[1], 3), dtype=np.uint8) + 255), axis=0)
 
         # add text to the image
-        font = np.random.randint(1, 7)
-        font_scale = np.random.randint(7, 18) / 20
-        cv2.putText(image, formules[np.random.randint(0, len(formules))] + " (m/z = " + str(
-            np.random.randint(2, 300)) + ")", (10, image.shape[0] - 5), font, font_scale, (0, 0, 0), 1, cv2.LINE_AA)
+        font_path  = f"Fonts/{np.random.randint(1, number_of_fonts)}.ttf"
+        font_scale = np.random.randint(10, 20)
+        text = formules[np.random.randint(0, len(formules))] + " (m/z = " + str(np.random.randint(2, 300)) + ")"
+        text_image = text_to_image(text, font_path, font_scale)
+        height = min(text_image.shape[0],  25)
+        width = min(text_image.shape[1], image.shape[1] - 5)  # maximal verfügbare Breite
+
+        image[image.shape[0] - 25  : image.shape[0] - 25   + height,5 :5 + width] = text_image[:height, :width]
 
     return image
 
@@ -430,12 +511,12 @@ def calculate_space_between(collage_image, x_new, y_new, direction, buffer_betwe
     if directions[direction][0] == 0:
         y_between = y_starter
 
-    cv2.rectangle(collage_image, (x_starter, y_starter + h_starter), (x_starter + w_starter, y_starter),
-                  (255, 0, 0), 3)
-    cv2.rectangle(collage_image, (x_between, y_between + h_between), (x_between + w_between, y_between),
-                  (0, 255, 0), 3)
-    cv2.rectangle(collage_image, (x_new, y_new + img_height), (x_new + img_width, y_new),
-                  (0, 0, 255), 3)
+    #cv2.rectangle(collage_image, (x_starter, y_starter + h_starter), (x_starter + w_starter, y_starter),
+    #              (255, 0, 0), 3)
+    #cv2.rectangle(collage_image, (x_between, y_between + h_between), (x_between + w_between, y_between),
+    #              (0, 255, 0), 3)
+    #cv2.rectangle(collage_image, (x_new, y_new + img_height), (x_new + img_width, y_new),
+    #              (0, 0, 255), 3)
 
     return x_between, y_between, h_between, w_between
 
@@ -473,7 +554,6 @@ def create_random_box(image_paths, collage_width, collage_height):
             x, y = x_new, y_new
             positions.append([x, y, img_width, img_height])
 
-
             # calculate the space between the two pictures
             x_between, y_between, h_between, w_between = calculate_space_between(collage_image, x_new, y_new, direction, buffer_between_pictures, x_starter, y_starter, w_starter, h_starter, img_height, img_width)
 
@@ -510,6 +590,12 @@ def create_random_box(image_paths, collage_width, collage_height):
 
     collage_image, collage_masque = end_changes( collage_image, collage_masque)
 
+
+    if np.random.randint(0, 3) == 0:
+        # add noise to make overfitting more unlikely
+        while np.random.randint(0, 4) != 0 :
+            noise = make_noise()
+            place_noise(collage_image, noise)
 
     return collage_image, collage_masque
 
