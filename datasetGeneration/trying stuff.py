@@ -4,13 +4,12 @@ from datasetGeneration.generation import create_random_box
 
 if __name__ == "__main__":
 
-    for k in range(10):
+    for k in range(50):
 
         # List of image paths
         image_paths = []
         nbMolecules = np.random.randint(5, 15)
         for j in range(nbMolecules):
-            #print("b")
             i = np.random.randint(0, 40000)
             image_paths.append(f"chemicalStructureSource/{i}.png")
 
@@ -24,15 +23,13 @@ if __name__ == "__main__":
         # try to create a collage, if it returns an error, try again
 
         collage, masque = create_random_box(image_paths, collage_width, collage_height)
-        """
-        while True:
+        while 1 == 1:
             try:
                 collage, masque = create_random_box(image_paths, collage_width, collage_height)
                 break
             except Exception as e:
                 print(f"Error making the picture: {e}")
-                break
-                """  #continue
+                continue
 
         # Save collage
         cv2.imwrite(f'data/images/{k}.jpg', collage)

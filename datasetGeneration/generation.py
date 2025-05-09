@@ -5,7 +5,7 @@ import random
 import string
 
 
-basic_symbols = "{}" #string.ascii_letters + string.digits + " !@#$%^&*()-_{}[];:,.<>?/|\\`~'\""
+basic_symbols = string.ascii_letters + string.digits + " !@#$%^&*()-_{}[];:,.<>?/|\\`~'\""
 
 
 formules = [
@@ -117,7 +117,7 @@ formules = [
 ]
 
 directions = [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]
-number_of_fonts = 15
+number_of_fonts = 12
 
 transformations = {
     (0, 1): 0,  # Droite
@@ -140,40 +140,69 @@ transformations = {
 # different text styles
 
 def draw_random_shapes(image):
+    color = (0, 0, 0)
+    height, width = image.shape[:2]
 
-    color = (0,0,0)
-    width = image.shape[0]
-    height = image.shape[1]
-
-        # Zufällige Form
-    shape_type = random.choice(['rectangle', 'circle', 'line', 'polygon'])
+    shape_type = random.choice([
+        'rectangle', 'circle', 'line', 'polygon', 'ellipse',
+        'points', 'filled_polygon', 'bezier', 'sinus_line'
+    ])
 
     if shape_type == 'rectangle':
-        # Zufällige Position und Größe für das Rechteck
         pt1 = (random.randint(0, width), random.randint(0, height))
         pt2 = (random.randint(0, width), random.randint(0, height))
-        cv2.rectangle(image, pt1, pt2, color, -1)  # -1 füllt das Rechteck
+        cv2.rectangle(image, pt1, pt2, color, -1)
 
     elif shape_type == 'circle':
-        # Zufälliger Mittelpunkt und Radius
         center = (random.randint(0, width), random.randint(0, height))
-        radius = random.randint(10, 100)
+        radius = random.randint(5, min(width, height) // 2)
         cv2.circle(image, center, radius, color, -1)
 
     elif shape_type == 'line':
-        # Zufällige Punkte für die Linie
         pt1 = (random.randint(0, width), random.randint(0, height))
         pt2 = (random.randint(0, width), random.randint(0, height))
-        cv2.line(image, pt1, pt2, color, random.randint(1, 10))  # zufällige Linienstärke
+        cv2.line(image, pt1, pt2, color, random.randint(1, 10))
 
     elif shape_type == 'polygon':
-        # Zufällige Anzahl an Punkten für das Polygon
-        num_points = random.randint(3, 6)  # zwischen 3 und 6 Ecken
+        num_points = random.randint(3, 8)
         points = [(random.randint(0, width), random.randint(0, height)) for _ in range(num_points)]
         cv2.polylines(image, [np.array(points)], isClosed=True, color=color, thickness=random.randint(1, 5))
 
+    elif shape_type == 'filled_polygon':
+        num_points = random.randint(3, 10)
+        points = [(random.randint(0, width), random.randint(0, height)) for _ in range(num_points)]
+        cv2.fillPoly(image, [np.array(points)], color=color)
+
+    elif shape_type == 'ellipse':
+        center = (random.randint(0, width), random.randint(0, height))
+        axes = (random.randint(10, width // 4), random.randint(10, height // 4))
+        angle = random.randint(0, 360)
+        startAngle = 0
+        endAngle = 360
+        cv2.ellipse(image, center, axes, angle, startAngle, endAngle, color, -1)
+
+    elif shape_type == 'points':
+        for _ in range(random.randint(50, 200)):
+            pt = (random.randint(0, width-1), random.randint(0, height-1))
+            image[pt[1], pt[0]] = color
+
+    elif shape_type == 'bezier':
+        # Simuliere eine gebogene Linie durch viele kleine Punkte
+        points = [(random.randint(0, width), random.randint(0, height)) for _ in range(4)]
+        curve = cv2.approxPolyDP(np.array(points, dtype=np.int32), 3, False)
+        cv2.polylines(image, [curve], isClosed=False, color=color, thickness=2)
+
+    elif shape_type == 'sinus_line':
+        freq = random.uniform(0.05, 0.15)
+        amp = random.randint(10, 40)
+        y_offset = random.randint(0, height)
+        for x in range(width):
+            y = int(amp * np.sin(2 * np.pi * freq * x) + y_offset)
+            if 0 <= y < height:
+                image[y, x] = color
 def make_noise():
-    option = np.random.choice(["Figure", "Text", "Letter"])
+
+    option = np.random.choice(["Figure", "Text", "Letter"])#
 
     if option == "Letter":
         font_scale = np.random.randint(20, 60)
@@ -182,7 +211,7 @@ def make_noise():
 
     if option == "Text":
         font_scale = np.random.randint(10, 30)
-        font_path  = f"Fonts/{np.random.randint(1, number_of_fonts)}.ttf"
+        font_path  = f"Fonts/{np.random.randint(11, 12)}.ttf"
         k = np.random.randint(3, 15)
         text = ''.join(random.choices(basic_symbols, k=k))
         return text_to_image(text,  font_path, font_scale)
@@ -191,6 +220,7 @@ def make_noise():
         image = np.full((np.random.randint(40, 100), np.random.randint(40, 100), 3), (255, 255, 255), dtype=np.uint8)
         draw_random_shapes(image)
         return image
+    return None
 
 def place_noise(collage_image, noise):
     x_orig, y_orig = np.random.randint(0, collage_image.shape[0] - noise.shape[0]), np.random.randint(0, collage_image.shape[1] - noise.shape[1])
@@ -220,12 +250,15 @@ def place_noise(collage_image, noise):
 def text_to_image(text, font_path, font_size=40, text_color=(0, 0, 0)):
     font = ImageFont.truetype(font_path, font_size)
 
+    if not text.strip():
+        raise ValueError("Text ist leer – getbbox kann nichts messen.")
+
     # calculate necessary size with  getbbox
     bbox = font.getbbox(text)
     width = bbox[2] - bbox[0]
     height = bbox[3] - bbox[1]
 
-    img = Image.new("RGB", (width, height), (255, 255, 255, 0))
+    img = Image.new("RGB", (width, height), (255, 255, 255))
     draw = ImageDraw.Draw(img)
 
     # Text is drawn
@@ -305,46 +338,6 @@ def draw_arrow(collage_image, collage_masque, x_between, y_between, h_between, w
                                                                           c] + (
                                                       masqueAlpha / 255.0) * masqueBgr[:, :, c]
 
-def draw_frames(collage_image, x, y, img_width, img_height):
-    option = np.random.choice(["solid_box", "dotted_box", "parentheses"])  # all are same probability
-    padding = np.random.randint(25, 50)
-    color = (0, 0, 0)
-    thickness = np.random.randint(1, 5)
-
-    top_left = (x - padding, y - padding)
-    bottom_right = (x + img_width + padding, y + img_height + padding)
-
-    if option == "solid_box":
-        # draw frame
-        cv2.rectangle(collage_image, top_left, bottom_right, color, thickness)
-
-    elif option == "dotted_box":
-        # draw dotted frame
-        dash_length = np.random.randint(5, 25)
-        for i in range(top_left[0], bottom_right[0], dash_length * 2):
-            cv2.line(collage_image, (i, top_left[1]), (i + dash_length, top_left[1]), color, thickness)
-            cv2.line(collage_image, (i, bottom_right[1]), (i + dash_length, bottom_right[1]), color, thickness)
-        for i in range(top_left[1], bottom_right[1], dash_length * 2):
-            cv2.line(collage_image, (top_left[0], i), (top_left[0], i + dash_length), color, thickness)
-            cv2.line(collage_image, (bottom_right[0], i), (bottom_right[0], i + dash_length), color, thickness)
-
-    elif option == "parentheses":
-        # draw parentheses
-        length = np.random.randint(20, 45)  # Länge der Klammern
-
-        # left side
-        cv2.line(collage_image, top_left, (top_left[0] + length, top_left[1]), color, thickness)
-        cv2.line(collage_image, top_left, (top_left[0], bottom_right[1]), color, thickness)
-        cv2.line(collage_image, (top_left[0], bottom_right[1]), (top_left[0] + length, bottom_right[1]), color,
-                 thickness)
-
-        # right side
-        cv2.line(collage_image, (bottom_right[0], top_left[1]), (bottom_right[0] - length, top_left[1]), color,
-                 thickness)
-        cv2.line(collage_image, (bottom_right[0], top_left[1]), (bottom_right[0], bottom_right[1]), color,
-                 thickness)
-        cv2.line(collage_image, bottom_right, (bottom_right[0] - length, bottom_right[1]), color, thickness)
-
 def draw_plus(collage_image, x_between, y_between, h_between, w_between):
     font_scale = np.random.randint(20, 50)
     h_buffer, w_buffer = -1, -1
@@ -403,6 +396,86 @@ def prepare_picture(image_path):
         width = min(text_image.shape[1], image.shape[1] - 5)  # maximal verfügbare Breite
 
         image[image.shape[0] - 25  : image.shape[0] - 25   + height,5 :5 + width] = text_image[:height, :width]
+
+    # 20% chance to add a border
+    if np.random.randint(0, 5) == 1:
+        option = np.random.choice(["solid_box", "dotted_box", "parentheses", ])  # all are same probability
+        padding = np.random.randint(30, 55)
+        color = (0, 0, 0)
+        thickness = np.random.randint(1, 5)
+
+        if option == "solid_box":
+            newimage = np.zeros((image.shape[0] + padding * 2, image.shape[1] + padding * 2, 3), dtype=np.uint8) + 255
+            newimage[padding:padding + image.shape[0], padding:padding + image.shape[1]] = image
+            image = newimage
+            # draw frame
+            cv2.rectangle(image, (5,5), (image.shape[1] -5, image.shape[0] -5), color, thickness)
+
+        elif option == "dotted_box":
+            # draw dotted frame
+
+            newimage = np.zeros((image.shape[0] + padding * 2, image.shape[1] + padding * 2, 3), dtype=np.uint8) + 255
+            newimage[padding:padding + image.shape[0], padding:padding + image.shape[1]] = image
+            image = newimage
+            top_left = (5, 5)
+            bottom_right = (image.shape[1] -5, image.shape[0] -5)
+            dash_length = np.random.randint(5, 25)
+
+            for i in range(top_left[0], bottom_right[0], dash_length * 2):
+                cv2.line(image, (i, top_left[1]), (i + dash_length, top_left[1]), color, thickness)
+                cv2.line(image, (i, bottom_right[1]), (i + dash_length, bottom_right[1]), color, thickness)
+            for i in range(top_left[1], bottom_right[1], dash_length * 2):
+                cv2.line(image, (top_left[0], i), (top_left[0], i + dash_length), color, thickness)
+                cv2.line(image, (bottom_right[0], i), (bottom_right[0], i + dash_length), color, thickness)
+
+        elif option == "parentheses":
+            # draw parentheses
+            kind = np.random.choice(["basic", "font"])
+            if kind == "basic":
+                # basic just draws lines to get the wanted effect
+                newimage = np.zeros((image.shape[0] + padding * 2, image.shape[1] + padding * 2, 3), dtype=np.uint8) + 255
+                newimage[padding:padding + image.shape[0], padding:padding + image.shape[1]] = image
+                image = newimage
+                top_left = (5, 5)
+                bottom_right = (image.shape[1] -5, image.shape[0] -5)
+                dash_length = np.random.randint(5, 25)
+
+                length = np.random.randint(20, 45)  # Länge der Klammern
+
+                # left side
+                cv2.line(image, top_left, (top_left[0] + length, top_left[1]), color, thickness)
+                cv2.line(image, top_left, (top_left[0], bottom_right[1]), color, thickness)
+                cv2.line(image, (top_left[0], bottom_right[1]), (top_left[0] + length, bottom_right[1]), color,
+                         thickness)
+
+                # right side
+                cv2.line(image, (bottom_right[0], top_left[1]), (bottom_right[0] - length, top_left[1]), color,
+                         thickness)
+                cv2.line(image, (bottom_right[0], top_left[1]), (bottom_right[0], bottom_right[1]), color,
+                         thickness)
+                cv2.line(image, bottom_right, (bottom_right[0] - length, bottom_right[1]), color, thickness)
+            elif kind == "font":
+                # here the parentisis from the different fonts are used and added on the sides of the image
+                if np.random.randint(0, 2) == 0:
+                    l = "["
+                    r = "]"
+                else:
+                    l = "{"
+                    r = "}"
+
+                font_path = f"Fonts/{np.random.randint(1, number_of_fonts)}.ttf"
+
+                left = text_to_image(l, font_path, 50)
+                h, w = left.shape[:2]
+                scale = image.shape[0] / h
+                new_width = int(w * scale)
+                left = cv2.resize(left, (new_width, image.shape[0]))
+
+                right = text_to_image(r, font_path, 50)
+                right = cv2.resize(right, (new_width, image.shape[0]))
+
+                image = cv2.hconcat([left, image, right])
+
 
     return image
 
@@ -531,6 +604,7 @@ def create_random_box(image_paths, collage_width, collage_height):
     positions = []  # Stores image positions as [x, y, img_width, img_height] with x, y left lower corner position
 
     for image_path in image_paths:
+        #loades the image and maybe adds text or a frame
         image = prepare_picture(image_path)
         img_height, img_width, _ = image.shape
 
@@ -582,16 +656,12 @@ def create_random_box(image_paths, collage_width, collage_height):
         # Paste image into collage
         collage_image[y:y + img_height, x:x + img_width] = image
 
-        # draw a mark arount the picture with 10% chance
-        if np.random.randint(0, 10) == 0:
-            draw_frames(collage_image, x, y, img_width, img_height)
-
         n += 1
 
     collage_image, collage_masque = end_changes( collage_image, collage_masque)
 
 
-    if np.random.randint(0, 3) == 0:
+    if np.random.randint(0, 2) == 0:
         # add noise to make overfitting more unlikely
         while np.random.randint(0, 4) != 0 :
             noise = make_noise()
