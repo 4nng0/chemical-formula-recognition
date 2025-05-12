@@ -18,8 +18,11 @@ if gpus:
 
 
 def arrow_heads(image_path, model_path):
+    print(image_path)
     model = tf.keras.models.load_model(model_path)
     image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        raise ValueError(f"Image not found at path: {image_path}")
 
 
     # Increase contrast
@@ -54,7 +57,7 @@ if __name__ == "__main__":
     base_path = os.path.dirname(script_path)
     test_image_dir = 'test_images'
     image_name = '2.jpg'
-    model_name = 'saved_models/unet_model_512.keras'
+    model_name = 'saved_models/unet_model_512_version_1.keras'
     image_path = os.path.join(base_path, test_image_dir, image_name)
     model_path = os.path.join(base_path, model_name)
     

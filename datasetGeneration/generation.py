@@ -130,15 +130,6 @@ transformations = {
     (-1, -1): 135  # Haut-Gauche
 }
 
-# TODO LIST
-# text at all different places and in diffent styles
-# random bits that are not arrows
-
-# DONE
-# more complex boxes
-# plus where arrows could be
-# different text styles
-
 def draw_random_shapes(image):
     color = (0, 0, 0)
     height, width = image.shape[:2]
@@ -200,6 +191,26 @@ def draw_random_shapes(image):
             y = int(amp * np.sin(2 * np.pi * freq * x) + y_offset)
             if 0 <= y < height:
                 image[y, x] = color
+
+def rotate(image, degrees):
+    h, w = image.shape[:2]
+    cX, cY = w // 2, h // 2
+    M = cv2.getRotationMatrix2D((cX, cY), degrees, 1.0)
+
+
+    cos = np.abs(M[0, 0])
+    sin = np.abs(M[0, 1])
+    nW = int((h * sin) + (w * cos))
+    nH = int((h * cos) + (w * sin))
+
+
+    M[0, 2] += (nW / 2) - cX
+    M[1, 2] += (nH / 2) - cY
+
+
+    return cv2.warpAffine(image, M, (nW, nH), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT,
+                             borderValue=(255, 255, 255, 0))
+
 def make_noise():
 
     option = np.random.choice(["Figure", "Text", "Letter"])#
@@ -207,14 +218,20 @@ def make_noise():
     if option == "Letter":
         font_scale = np.random.randint(20, 60)
         font_path  = f"Fonts/{np.random.randint(1, number_of_fonts)}.ttf"
-        return text_to_image(random.choice(basic_symbols),  font_path, font_scale)
+        noise = text_to_image(random.choice(basic_symbols),  font_path, font_scale)
+        degrees = np.random.randint(0, 360)
+        noise = rotate(noise, degrees)
+        return noise
 
     if option == "Text":
         font_scale = np.random.randint(10, 30)
         font_path  = f"Fonts/{np.random.randint(11, 12)}.ttf"
         k = np.random.randint(3, 15)
         text = ''.join(random.choices(basic_symbols, k=k))
-        return text_to_image(text,  font_path, font_scale)
+        noise = text_to_image(text,  font_path, font_scale)
+        degrees = np.random.randint(0, 360)
+        noise = rotate(noise, degrees)
+        return noise
 
     if option == "Figure":
         image = np.full((np.random.randint(40, 100), np.random.randint(40, 100), 3), (255, 255, 255), dtype=np.uint8)
@@ -247,11 +264,17 @@ def place_noise(collage_image, noise):
                 collage_image[x: x + noise.shape[0], y: y + noise.shape[1]] = noise
                 return
 
+
+
 def text_to_image(text, font_path, font_size=40, text_color=(0, 0, 0)):
+    # Word of warning: in this methode it can come to a endless loop. it doesn't happen often but i could not fix the problem
+
     font = ImageFont.truetype(font_path, font_size)
 
-    if not text.strip():
-        raise ValueError("Text ist leer – getbbox kann nichts messen.")
+
+if not text.strip():
+    raise ValueError("text is empty")
+
 
     # calculate necessary size with  getbbox
     bbox = font.getbbox(text)
@@ -670,49 +693,35 @@ def create_random_box(image_paths, collage_width, collage_height):
     return collage_image, collage_masque
 
 
-"""
-#creates a dataset of 1000 images
-for k in range(1000):
+if __name__ == "__main__":
 
-    # List of image paths
-    image_paths = []
-    nbMolecules = np.random.randint(5, 15)
-    for j in range(nbMolecules):
-        i=np.random.randint(0, 40000)
-        image_paths.append(f"datasetGeneration/chemicalStructureSource/{i}.png")
+    for k in range(1000):
 
-    # Dimensions of the image 
-    collage_width = 1500
-    collage_height = 1500
+        # List of image paths
+        image_paths = []
+        nbMolecules = np.random.randint(5, 15)
+        for j in range(nbMolecules):
+            i = np.random.randint(0, 40000)
+            image_paths.append(f"chemicalStructureSource/{i}.png")
+
+        # Dimensions of the image
+        collage_width = 1500
+        collage_height = 1500
+
+        print(image_paths)
+
+        # make the image
+        # try to create a collage, if it returns an error, try again
 
 
-    # make the image 
-    # try to create a collage, if it returns an error, try again
-    while True:
-        try:
-            collage, masque = create_random_box(image_paths, collage_width, collage_height)
-            break
-        except:
-            print("Erreur lors de la création du collage, on recommence.")
-            continue
+        while 1 == 1:
+            try:
+                collage, masque = create_random_box(image_paths, collage_width, collage_height)
+                break
+            except Exception as e:
+                print(f"Error making the picture: {e}")
+                continue
 
-    # Save collage
-    cv2.imwrite(f'data/images/{k}.jpg', collage)
-    cv2.imwrite(f'data/masks/{k}.jpg', masque)
-"""
-"""
-
-image_paths = []
-nbMolecules = np.random.randint(5, 15)
-for j in range(nbMolecules):
-    i = np.random.randint(0, 40000)
-     image_paths.append(f"datasetGeneration/chemicalStructureSource/{i}.png")
-
-collage_width, collage_height = 1500, 1500
-
-collage, masque = create_random_box(image_paths, collage_width, collage_height)
-
-# cv2.imwrite(f'image.jpg', collage)
-# cv2.imwrite(f'masque.jpg', masque)
-
-"""
+        # Save collage
+        cv2.imwrite(f'data/images/{k}.jpg', collage)
+        cv2.imwrite(f'data/masks/{k}.jpg', masque)

@@ -4,11 +4,12 @@ import numpy as np
 
 from scripts import detect
 
+model_location = "saved_models/unet_model_512_version_1.keras"
 
 def testPixelAccuracy(numberOfPictures):
     script_path = os.getcwd()
     base_path = os.path.dirname(script_path)
-    model_path = os.path.join(base_path, 'saved_models/unet_model_512.keras')
+    model_path = os.path.join(base_path, model_location)
 
     precision = 0
     recall = 0
@@ -44,7 +45,7 @@ def testPixelAccuracy(numberOfPictures):
 def testCentroidAccuracy(numberOfPictures):
     script_path = os.getcwd()
     base_path = os.path.dirname(script_path)
-    model_path = os.path.join(base_path, 'saved_models/unet_model_512.keras')
+    model_path = os.path.join(base_path, model_location)
 
 
     numberOfPictures

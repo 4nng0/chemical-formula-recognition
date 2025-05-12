@@ -41,8 +41,8 @@ if __name__ == "__main__":
     
     script_path = os.getcwd()
     base_path = os.path.dirname(script_path)
-    image_dir = os.path.join(base_path, 'data/images')
-    mask_dir = os.path.join(base_path, 'data/masks')
+    image_dir = os.path.join(base_path, 'datasetGeneration/data/images')
+    mask_dir = os.path.join(base_path, 'datasetGeneration/data/masks')
     images, masks = load_data(image_dir, mask_dir)
     
     # Saving preprocessed images and masks into numpy files

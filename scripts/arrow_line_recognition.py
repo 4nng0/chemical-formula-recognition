@@ -6,6 +6,13 @@ import matplotlib.pyplot as plt
 
 from scripts import detect
 
+#TODO: get the threshold to a better value,
+#TODO: somehow support - - - > arrows.
+#TODO: get a way to test the accuracy
+#TODO: only one line per centroid
+#TODO: splitting lines with more points of interest
+#TODO: some arrows are to short, whats up with that?
+
 # Enable GPU memory growth
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -130,14 +137,18 @@ def filter_short_lines(lines, min_length=30):
 
 
 def get_result(image_path, model_path, result_path):
-    binary_mask = detect.arrow_heads(image_path, model_path)
+    binary_mask = cv2.imread(model_path, cv2.IMREAD_GRAYSCALE)
+    #binary_mask =detect.arrow_heads(image_path, model_path)
     original_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
-    print(f"Total connected components (excluding background): {num_labels - 1}")
 
     detected_lines = detect_lines(original_image)
 
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
+    print(f"Total connected components (excluding background): {num_labels - 1}")
+
     # Find intersecting lines
+    # TODO maybe pre process the lines to make them more correct
+    # TODO here we need to make it so we can only match one line with one point of interest and in a certain distance
     intersecting_lines, centroids = find_lines_intersecting_components(detected_lines, labels, centroids)
 
     # Filter short lines
@@ -150,12 +161,27 @@ def get_result(image_path, model_path, result_path):
 
 if __name__ == "__main__":
     # Image path
+    for i in range(1, 13):
+        script_path = os.getcwd()
+        base_path = os.path.dirname(script_path)
+        test_images = 'test/realPictures'
+        image_path = os.path.join(base_path, test_images,  f"{i}.jpg")
+        model_name = 'unet_model_512_version_1.keras'
+        model_path = os.path.join(base_path,'saved_models', model_name)
+        mask_path = os.path.join(base_path, 'test/binaryMasks', f"{i}.png")
+        result_path = os.path.join(base_path, 'test_results', f"centroid_{i}_result.png")
+        get_result(image_path, mask_path, result_path)
+
+    """""
     script_path = os.getcwd()
     base_path = os.path.dirname(script_path)
-    test_images = 'test_images'
-    image_name = '8.jpeg'
-    model_name = 'unet_model_512.keras'
-    image_path = os.path.join(base_path, test_images, image_name)
+    test_images = 'test/realPictures'
+    i = "1"
+    model_name = 'unet_model_512_version_1.keras'
+    image_path = os.path.join(base_path, test_images,  f"{i}.jpg")
     model_path = os.path.join(base_path,'saved_models', model_name)
-    
-    get_result(image_path, model_path, os.path.join(os.getcwd(), 'result_image.jpg'))
+    mask_path = os.path.join(base_path, 'test/binaryMasks', f"{i}.png")
+
+    #right now we use the right binary mask and not the one from the model
+    get_result(image_path, mask_path, os.path.join(os.getcwd(), 'result_image.jpg'))
+    """""
