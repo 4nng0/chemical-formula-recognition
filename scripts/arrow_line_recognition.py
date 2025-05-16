@@ -3,6 +3,7 @@ import cv2
 import tensorflow as tf
 import os
 import matplotlib.pyplot as plt
+from scipy.spatial.distance import cdist
 
 from scripts import detect
 
@@ -24,11 +25,114 @@ if gpus:
         print(f"Error enabling GPU memory growth: {e}")
 
 
+
+def hausdorff_distance(A, B):
+    """
+    Berechne symmetrische Hausdorff-Distanz zwischen zwei Punktmengen A und B.
+    """
+    if len(A) == 0 or len(B) == 0:
+        return float('inf')
+    D = cdist(A, B)
+    return max(D.min(axis=1).max(), D.min(axis=0).max())
+
+
+def compute_best_symmetry_axes(binary_mask, show=True):
+    axes = {}
+
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
+
+    for label in range(1, num_labels):
+        component_mask = (labels == label).astype(np.uint8)
+        points = np.column_stack(np.where(component_mask > 0))
+        if len(points) < 5:
+            continue
+
+        # PCA
+        mean = np.mean(points, axis=0)
+        centered = points - mean
+        cov = np.cov(centered.T)
+        eigvals, eigvecs = np.linalg.eig(cov)
+        axis1 = eigvecs[:, np.argmax(eigvals)]
+        axis2 = np.array([-axis1[1], axis1[0]])  # 90° gedreht
+
+        # Beide Richtungen testen
+        best_axis = None
+        best_score = float('inf')
+        best_info = None
+
+        for axis in [axis1, axis2]:
+            # Spiegelung über Achse durch Mittelpunkt
+            R = np.eye(2) - 2 * np.outer(axis, axis)  # Reflektionsmatrix
+            reflected = (centered @ R.T) + mean
+
+            # Maske rendern
+            reflected_mask = np.zeros_like(component_mask)
+            reflected_points = np.round(reflected).astype(int)
+            for y, x in reflected_points:
+                if 0 <= y < reflected_mask.shape[0] and 0 <= x < reflected_mask.shape[1]:
+                    reflected_mask[y, x] = 255
+
+            # Konturen vergleichen (original und gespiegelt)
+            contours1, _ = cv2.findContours(component_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours2, _ = cv2.findContours(reflected_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            if contours1 and contours2:
+                pts1 = contours1[0].squeeze()
+                pts2 = contours2[0].squeeze()
+                if pts1.ndim != 2 or pts2.ndim != 2:
+                    continue  # ungültig
+                d = hausdorff_distance(pts1, pts2)
+                if d < best_score:
+                    best_score = d
+                    best_axis = axis
+                    best_info = {
+                        'center': tuple(mean[::-1]),
+                        'axis': tuple(axis[::-1]),
+                        'hausdorff': d
+                    }
+
+        if best_info:
+            axes[label] = best_info
+
+
+    # Optional: Visualisierung
+    if show:
+        plt.figure(figsize=(8, 8))
+        plt.imshow(binary_mask, cmap='gray')
+        for info in axes.values():
+            cx, cy = info['center']
+            dx, dy = info['axis']
+            plt.arrow(cx - dx * 50, cy - dy * 50, dx * 100, dy * 100, color='red', head_width=5)
+        plt.title("Symmetrieachsen (PCA)")
+        plt.axis('off')
+        plt.show()
+
+    return num_labels, labels, stats, centroids, axes
+
 def detect_lines(image):
+    show = False
+
     edges = cv2.Canny(image, 50, 150, apertureSize=5)
 
+    if show:
+        plt.figure(figsize=(10, 5))
+        plt.subplot(1, 2, 1)
+        plt.imshow(image, cmap='gray')
+        plt.title('Original Image')
+        plt.axis('off')
+
+        plt.subplot(1, 2, 2)
+        plt.imshow(edges, cmap='gray')
+        plt.title('Canny Edges')
+        plt.axis('off')
+
+        plt.tight_layout()
+        plt.show()
+
+        plt.figure(figsize=(10, 5))
+
     lines_list = []
-    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=50, minLineLength=10, maxLineGap=8)
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=1, minLineLength=1, maxLineGap=30)
 
     for points in lines:
         x1, y1, x2, y2 = points[0]
@@ -75,6 +179,46 @@ def get_rotated_bounding_box(x1, y1, x2, y2, threshold=20):
 
     return box, rect
 
+def get_distance_norm(line, centroid):
+    (x1, y1), (x2, y2) = line
+    (cx, cy) = centroid
+    x_diff_1 = cx - x1
+    y_diff_1 = cy - y1
+    x_diff_2 = cx - x2
+    y_diff_2 = cy - y2
+    diff_1 = np.sqrt(x_diff_1 ** 2 + y_diff_1 ** 2)
+    diff_2 = np.sqrt(x_diff_2 ** 2 + y_diff_2 ** 2)
+    return min(diff_1, diff_2)
+
+
+def find_lines_that_point_to_centroids(detected_lines, stats, centroids, threshold=10):
+    """
+    Find lines intersecting with centroids and remove centroids with no intersecting lines.
+    """
+    intersecting_lines = []
+    valid_centroids = [centroids[0]]  # Keep the background centroid (index 0)
+    element = 0
+
+    #go over the list of lines and mathc ist with best maching centroid
+    for r_idx, (cx, cy) in enumerate(centroids[1:], start=1):  # Skip background centroid
+        element += 1
+        threshold = max(stats[element, cv2.CC_STAT_WIDTH], stats[element, cv2.CC_STAT_HEIGHT])
+        min_diff = 2 * threshold
+
+        for line in detected_lines:
+
+            this_diff = get_distance_norm(line, (cx, cy))
+
+            if this_diff < min_diff:
+                min_diff = this_diff
+                best_match = line
+
+        if min_diff < threshold:
+            intersecting_lines.append(best_match)
+            detected_lines.remove(best_match)
+            valid_centroids.append((cx, cy))
+
+    return intersecting_lines, valid_centroids
 
 def find_lines_intersecting_components(detected_lines, labels, centroids, threshold=10):
     """
@@ -144,44 +288,68 @@ def get_result(image_path, model_path, result_path):
     detected_lines = detect_lines(original_image)
 
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
+
     print(f"Total connected components (excluding background): {num_labels - 1}")
 
+    detected_lines = filter_short_lines(detected_lines)
+    visualize_results(binary_mask, centroids, [])
     # Find intersecting lines
     # TODO maybe pre process the lines to make them more correct
     # TODO here we need to make it so we can only match one line with one point of interest and in a certain distance
-    intersecting_lines, centroids = find_lines_intersecting_components(detected_lines, labels, centroids)
+    intersecting_lines, new_centroids = find_lines_that_point_to_centroids(detected_lines, stats, centroids)
+    visualize_results(binary_mask, new_centroids, [])
+    return 0
+
 
     # Filter short lines
-    intersecting_lines = filter_short_lines(intersecting_lines)
-    intersecting_lines, centroids = find_lines_intersecting_components(intersecting_lines, labels, centroids)
+    #TODO: what does this do?
+    #intersecting_lines = filter_short_lines(intersecting_lines)
+    #intersecting_lines, new_centroids = find_lines_intersecting_components(intersecting_lines, labels, new_centroids)
     
-    output_image = visualize_results(original_image, centroids, intersecting_lines)
+    output_image = visualize_results(original_image, new_centroids, intersecting_lines)
+
     cv2.imwrite(result_path, output_image)
+
+
+def try_stuff(image_path, mask_path):
+    binary_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+    # binary_mask =detect.arrow_heads(image_path, model_path)
+    original_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+
+    #detected_lines = detect_lines(binary_mask)
+
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
+    #num_labels, labels, stats, centroids, axes = compute_best_symmetry_axes(binary_mask)
+
+    #detected_lines = filter_short_lines(detected_lines)
+    # Find intersecting lines
+    # TODO maybe pre process the lines to make them more correct
+    # TODO here we need to make it so we can only match one line with one point of interest and in a certain distance
+    #intersecting_lines, new_centroids = find_lines_that_point_to_centroids(detected_lines, stats, centroids)
+
+    # Filter short lines
+    # TODO: what does this do?
+    # intersecting_lines = filter_short_lines(intersecting_lines)
+    # intersecting_lines, new_centroids = find_lines_intersecting_components(intersecting_lines, labels, new_centroids)
+
+    visualize_results(binary_mask, centroids, [])
 
 
 if __name__ == "__main__":
     # Image path
-    for i in range(1, 13):
+
+
+    for i in range(0, 6):
         script_path = os.getcwd()
         base_path = os.path.dirname(script_path)
         test_images = 'test/realPictures'
-        image_path = os.path.join(base_path, test_images,  f"{i}.jpg")
-        model_name = 'unet_model_512_version_1.keras'
-        model_path = os.path.join(base_path,'saved_models', model_name)
-        mask_path = os.path.join(base_path, 'test/binaryMasks', f"{i}.png")
+        #image_path = os.path.join(base_path, test_images,  f"{i}.jpg")
+        image_path = os.path.join(base_path, f'datasetGeneration/data/i{i}.jpg')
+        #model_path = os.path.join(base_path,'saved_models', model_name)
+        mask_path = os.path.join(base_path, f'datasetGeneration/data/m{i}.jpg')
         result_path = os.path.join(base_path, 'test_results', f"centroid_{i}_result.png")
+        #try_stuff(image_path, mask_path)
+        # right now we use the right binary mask and not the one from the model
         get_result(image_path, mask_path, result_path)
 
-    """""
-    script_path = os.getcwd()
-    base_path = os.path.dirname(script_path)
-    test_images = 'test/realPictures'
-    i = "1"
-    model_name = 'unet_model_512_version_1.keras'
-    image_path = os.path.join(base_path, test_images,  f"{i}.jpg")
-    model_path = os.path.join(base_path,'saved_models', model_name)
-    mask_path = os.path.join(base_path, 'test/binaryMasks', f"{i}.png")
 
-    #right now we use the right binary mask and not the one from the model
-    get_result(image_path, mask_path, os.path.join(os.getcwd(), 'result_image.jpg'))
-    """""

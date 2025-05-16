@@ -272,8 +272,8 @@ def text_to_image(text, font_path, font_size=40, text_color=(0, 0, 0)):
     font = ImageFont.truetype(font_path, font_size)
 
 
-if not text.strip():
-    raise ValueError("text is empty")
+    if not text.strip():
+        raise ValueError("text is empty")
 
 
     # calculate necessary size with  getbbox
@@ -695,7 +695,18 @@ def create_random_box(image_paths, collage_width, collage_height):
 
 if __name__ == "__main__":
 
-    for k in range(1000):
+    for k in range(0,6):
+
+        collage_imager, collage_masque = init(100, 100)
+
+        draw_arrow(collage_imager, collage_masque, 0, 0, 100, 100, 1, k)
+
+        collage_imager, collage_masque = end_changes(collage_imager, collage_masque)
+
+        cv2.imwrite(f'data/m{k}.jpg', collage_masque)
+        cv2.imwrite(f'data/i{k}.jpg', collage_imager)
+
+    for k in range(0):
 
         # List of image paths
         image_paths = []
@@ -723,5 +734,6 @@ if __name__ == "__main__":
                 continue
 
         # Save collage
+
         cv2.imwrite(f'data/images/{k}.jpg', collage)
         cv2.imwrite(f'data/masks/{k}.jpg', masque)
