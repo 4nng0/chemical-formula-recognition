@@ -695,18 +695,7 @@ def create_random_box(image_paths, collage_width, collage_height):
 
 if __name__ == "__main__":
 
-    for k in range(0,6):
-
-        collage_imager, collage_masque = init(100, 100)
-
-        draw_arrow(collage_imager, collage_masque, 0, 0, 100, 100, 1, k)
-
-        collage_imager, collage_masque = end_changes(collage_imager, collage_masque)
-
-        cv2.imwrite(f'data/m{k}.jpg', collage_masque)
-        cv2.imwrite(f'data/i{k}.jpg', collage_imager)
-
-    for k in range(0):
+    for k in range(10):
 
         # List of image paths
         image_paths = []

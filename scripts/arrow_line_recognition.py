@@ -4,6 +4,7 @@ import tensorflow as tf
 import os
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import cdist
+from skimage.metrics import hausdorff_distance
 
 from scripts import detect
 
@@ -25,75 +26,100 @@ if gpus:
         print(f"Error enabling GPU memory growth: {e}")
 
 
+def reflect_points(points, center, direction):
+    # Normiere Richtungsvektor
+    direction = direction / np.linalg.norm(direction)
 
-def hausdorff_distance(A, B):
-    """
-    Berechne symmetrische Hausdorff-Distanz zwischen zwei Punktmengen A und B.
-    """
-    if len(A) == 0 or len(B) == 0:
-        return float('inf')
-    D = cdist(A, B)
-    return max(D.min(axis=1).max(), D.min(axis=0).max())
+    # Vektor von center zu jedem Punkt
+    vecs = points - center
 
+    # Projektion auf Achse
+    proj = np.dot(vecs, direction[:, None]) * direction
 
-def compute_best_symmetry_axes(binary_mask, show=True):
+    # Spiegelung: p' = p - 2 * (p_proj - center)
+    reflected = center + proj - (vecs - proj)
+    return reflected
+
+def points_to_mask(points, shape):
+    mask = np.zeros(shape, dtype=np.uint8)
+    for y, x in np.round(points).astype(int):
+        if 0 <= y < shape[0] and 0 <= x < shape[1]:
+            mask[y, x] = 1
+    return mask
+
+def compute_best_symmetry_axes(binary_mask, show=False):
     axes = {}
+    details_show = False
 
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
-
     for label in range(1, num_labels):
         component_mask = (labels == label).astype(np.uint8)
         points = np.column_stack(np.where(component_mask > 0))
         if len(points) < 5:
             continue
 
-        # PCA
+        # PCA zur Bestimmung der Hauptachsen
+        # am ende war es besser einfach durch alles durchzugehen aber vielleicht kann man das verbessern damit es schneller wird
         mean = np.mean(points, axis=0)
         centered = points - mean
         cov = np.cov(centered.T)
         eigvals, eigvecs = np.linalg.eig(cov)
         axis1 = eigvecs[:, np.argmax(eigvals)]
-        axis2 = np.array([-axis1[1], axis1[0]])  # 90° gedreht
+        axis2 = np.array([-axis1[1], axis1[0]])
 
-        # Beide Richtungen testen
-        best_axis = None
+
         best_score = float('inf')
         best_info = None
+        original_mask = points_to_mask(points, component_mask.shape)
 
-        for axis in [axis1, axis2]:
-            # Spiegelung über Achse durch Mittelpunkt
-            R = np.eye(2) - 2 * np.outer(axis, axis)  # Reflektionsmatrix
-            reflected = (centered @ R.T) + mean
+        for angle in np.arange(0, 180, 30):
+            theta = np.deg2rad(angle)
+            direction = np.array([ np.cos(theta), np.sin(theta)])
 
-            # Maske rendern
-            reflected_mask = np.zeros_like(component_mask)
-            reflected_points = np.round(reflected).astype(int)
-            for y, x in reflected_points:
-                if 0 <= y < reflected_mask.shape[0] and 0 <= x < reflected_mask.shape[1]:
-                    reflected_mask[y, x] = 255
+            reflected = reflect_points(points, mean, direction)
+            mask = points_to_mask(reflected, component_mask.shape)
+
+            if details_show:
+                # Normiere die Masken, falls nötig (auf 0–1 Bereich)
+                original_mask = original_mask.astype(np.float32)
+                mask = mask.astype(np.float32)
+
+                # Erstelle ein leeres RGB-Bild
+                overlay = np.zeros((*original_mask.shape, 3), dtype=np.float32)
+
+                # Weist die Farben zu
+                overlay[..., 0] = original_mask  # Rotkanal
+                overlay[..., 2] = mask  # Blaukanal
+
+                # Optional: Clip Werte auf 0–1
+                overlay = np.clip(overlay, 0, 1)
+
+                # Anzeige
+                plt.figure(figsize=(6, 6))
+                plt.imshow(overlay)
+                plt.title(f'Overlay: Red = Original, Blue = Reflected, angle = {angle}')
+                plt.axis('off')
+                plt.tight_layout()
+                plt.show()
+
+                plt.figure(figsize=(10, 5))
 
             # Konturen vergleichen (original und gespiegelt)
-            contours1, _ = cv2.findContours(component_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            contours2, _ = cv2.findContours(reflected_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            d = hausdorff_distance(mask, original_mask)
 
-            if contours1 and contours2:
-                pts1 = contours1[0].squeeze()
-                pts2 = contours2[0].squeeze()
-                if pts1.ndim != 2 or pts2.ndim != 2:
-                    continue  # ungültig
-                d = hausdorff_distance(pts1, pts2)
-                if d < best_score:
-                    best_score = d
-                    best_axis = axis
-                    best_info = {
-                        'center': tuple(mean[::-1]),
-                        'axis': tuple(axis[::-1]),
-                        'hausdorff': d
-                    }
+
+            #print(f"Label {label}: Hausdorff-Distanz = {d:.2f} angle = {angle}")
+
+            if d < best_score:
+                best_score = d
+                best_info = {
+                    'center': tuple(mean[::-1]),
+                    'axis': tuple(direction[::-1]),
+                    'hausdorff': d
+                }
 
         if best_info:
             axes[label] = best_info
-
 
     # Optional: Visualisierung
     if show:
@@ -103,7 +129,7 @@ def compute_best_symmetry_axes(binary_mask, show=True):
             cx, cy = info['center']
             dx, dy = info['axis']
             plt.arrow(cx - dx * 50, cy - dy * 50, dx * 100, dy * 100, color='red', head_width=5)
-        plt.title("Symmetrieachsen (PCA)")
+        plt.title("Beste Symmetrieachsen (PCA + Hausdorff)")
         plt.axis('off')
         plt.show()
 
@@ -132,7 +158,7 @@ def detect_lines(image):
         plt.figure(figsize=(10, 5))
 
     lines_list = []
-    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=1, minLineLength=1, maxLineGap=30)
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=30, minLineLength=5, maxLineGap=8)
 
     for points in lines:
         x1, y1, x2, y2 = points[0]
@@ -179,7 +205,7 @@ def get_rotated_bounding_box(x1, y1, x2, y2, threshold=20):
 
     return box, rect
 
-def get_distance_norm(line, centroid):
+def get_distance_norm(line, centroid, axis):
     (x1, y1), (x2, y2) = line
     (cx, cy) = centroid
     x_diff_1 = cx - x1
@@ -188,10 +214,16 @@ def get_distance_norm(line, centroid):
     y_diff_2 = cy - y2
     diff_1 = np.sqrt(x_diff_1 ** 2 + y_diff_1 ** 2)
     diff_2 = np.sqrt(x_diff_2 ** 2 + y_diff_2 ** 2)
-    return min(diff_1, diff_2)
+
+    line_vec = np.array([x2 - x1, y2 - y1])
+    axis_vec = np.array(axis.get('axis'))
+
+    cos_theta = np.dot(line_vec, axis_vec) / (np.linalg.norm(line_vec) * np.linalg.norm(axis_vec))
+
+    return min(diff_1, diff_2) + (1 - cos_theta) * 10 # Add a large penalty for non-parallel lines
 
 
-def find_lines_that_point_to_centroids(detected_lines, stats, centroids, threshold=10):
+def find_lines_that_point_to_centroids(detected_lines, stats, centroids, axes, threshold=10):
     """
     Find lines intersecting with centroids and remove centroids with no intersecting lines.
     """
@@ -202,12 +234,12 @@ def find_lines_that_point_to_centroids(detected_lines, stats, centroids, thresho
     #go over the list of lines and mathc ist with best maching centroid
     for r_idx, (cx, cy) in enumerate(centroids[1:], start=1):  # Skip background centroid
         element += 1
-        threshold = max(stats[element, cv2.CC_STAT_WIDTH], stats[element, cv2.CC_STAT_HEIGHT])
+        threshold = max(stats[element, cv2.CC_STAT_WIDTH], stats[element, cv2.CC_STAT_HEIGHT]) * 10
         min_diff = 2 * threshold
 
         for line in detected_lines:
 
-            this_diff = get_distance_norm(line, (cx, cy))
+            this_diff = get_distance_norm(line, (cx, cy), axes[element])
 
             if this_diff < min_diff:
                 min_diff = this_diff
@@ -296,7 +328,7 @@ def get_result(image_path, model_path, result_path):
     # Find intersecting lines
     # TODO maybe pre process the lines to make them more correct
     # TODO here we need to make it so we can only match one line with one point of interest and in a certain distance
-    intersecting_lines, new_centroids = find_lines_that_point_to_centroids(detected_lines, stats, centroids)
+    intersecting_lines, new_centroids = find_lines_that_point_to_centroids(detected_lines, stats, centroids, axes={})
     visualize_results(binary_mask, new_centroids, [])
     return 0
 
@@ -316,40 +348,42 @@ def try_stuff(image_path, mask_path):
     # binary_mask =detect.arrow_heads(image_path, model_path)
     original_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
 
-    #detected_lines = detect_lines(binary_mask)
+    detected_lines = detect_lines(original_image)
 
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
+    #num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
     #num_labels, labels, stats, centroids, axes = compute_best_symmetry_axes(binary_mask)
-
-    #detected_lines = filter_short_lines(detected_lines)
+    detected_lines = filter_short_lines(detected_lines)
+    visualize_results(original_image, [], detected_lines)
     # Find intersecting lines
     # TODO maybe pre process the lines to make them more correct
     # TODO here we need to make it so we can only match one line with one point of interest and in a certain distance
-    #intersecting_lines, new_centroids = find_lines_that_point_to_centroids(detected_lines, stats, centroids)
+    #intersecting_lines, new_centroids = find_lines_that_point_to_centroids(detected_lines, stats, centroids, axes)
 
     # Filter short lines
     # TODO: what does this do?
     # intersecting_lines = filter_short_lines(intersecting_lines)
     # intersecting_lines, new_centroids = find_lines_intersecting_components(intersecting_lines, labels, new_centroids)
 
-    visualize_results(binary_mask, centroids, [])
+    #visualize_results(original_image, new_centroids, intersecting_lines)
 
 
 if __name__ == "__main__":
     # Image path
 
 
-    for i in range(0, 6):
+    for i in range(1, 14):
         script_path = os.getcwd()
         base_path = os.path.dirname(script_path)
         test_images = 'test/realPictures'
-        #image_path = os.path.join(base_path, test_images,  f"{i}.jpg")
-        image_path = os.path.join(base_path, f'datasetGeneration/data/i{i}.jpg')
+        binary_mask = 'test/binaryMasks'
+        image_path = os.path.join(base_path, test_images,  f"{i}.jpg")
+        #image_path = os.path.join(base_path, f'datasetGeneration/data/i{i}.jpg')
         #model_path = os.path.join(base_path,'saved_models', model_name)
-        mask_path = os.path.join(base_path, f'datasetGeneration/data/m{i}.jpg')
+        mask_path = os.path.join(base_path, binary_mask, f"{i}.png")
+        #mask_path = os.path.join(base_path, f'datasetGeneration/data/m{i}.jpg')
         result_path = os.path.join(base_path, 'test_results', f"centroid_{i}_result.png")
-        #try_stuff(image_path, mask_path)
+        try_stuff(image_path, mask_path)
         # right now we use the right binary mask and not the one from the model
-        get_result(image_path, mask_path, result_path)
+        #get_result(image_path, mask_path, result_path)
 
 

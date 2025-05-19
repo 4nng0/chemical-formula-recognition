@@ -32,17 +32,20 @@ def remove_text(input_path: str, output_path: str) -> None:
 
         # Always remove detected text
         cv2.fillPoly(image, pts=[points], color=(255, 255, 255))  # Fill with white color
-
-    cv2.imwrite(output_path, image)  # Save the processed image
     print(f"Processed image saved to {output_path}")
+    cv2.imwrite(output_path, image)  # Save the processed image
+
 
 # Example Usage
 if __name__ == "__main__":
-    base_path = os.getcwd()
-    test_images = 'test_images'
-    image_name = '1.jpg'
-    output_images = 'notext_images'
-    input_image_path = os.path.join(base_path, test_images, image_name)  # Input file
-    output_image_path = os.path.join(base_path, output_images, image_name)  # Output file
+    for i in range(13, 14):  # Loop through images
 
-    remove_text(input_image_path, output_image_path)
+        script_path = os.getcwd()
+        base_path = os.path.dirname(script_path)
+        test_images = 'test'
+        image_name = f'realPictures/{i}.jpg'
+        output_images = f'removed_text/{i}.jpg'
+        input_image_path = os.path.join(base_path, test_images, image_name)  # Input file
+        output_image_path = os.path.join(base_path,test_images, output_images)  # Output file
+
+        remove_text(input_image_path, output_image_path)  # Process the image
