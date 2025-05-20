@@ -15,6 +15,8 @@ from scripts import detect
 #TODO: splitting lines with more points of interest
 #TODO: some arrows are to short, whats up with that?
 
+model_name = 'unet_model_512_version_1.keras'
+
 # Enable GPU memory growth
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -72,7 +74,7 @@ def compute_best_symmetry_axes(binary_mask, show=False):
         best_info = None
         original_mask = points_to_mask(points, component_mask.shape)
 
-        for angle in np.arange(0, 180, 30):
+        for angle in np.arange(0, 180, 15):
             theta = np.deg2rad(angle)
             direction = np.array([ np.cos(theta), np.sin(theta)])
 
@@ -158,11 +160,20 @@ def detect_lines(image):
         plt.figure(figsize=(10, 5))
 
     lines_list = []
-    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=30, minLineLength=5, maxLineGap=8)
+    #lsd methode
+    lines = []
+
+    gray_image = (image * 255).astype(np.uint8)
+    lsd = cv2.createLineSegmentDetector()
+
+    # Linien detektieren
+    lines = lsd.detect(gray_image)[0]
+    #lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=30, minLineLength=5, maxLineGap=8)
 
     for points in lines:
         x1, y1, x2, y2 = points[0]
-        lines_list.append([(x1, y1), (x2, y2)])
+        lines_list.append([(int(x1), int(y1)), (int(x2), int(y2))])
+
     return lines_list
 
 
@@ -205,7 +216,7 @@ def get_rotated_bounding_box(x1, y1, x2, y2, threshold=20):
 
     return box, rect
 
-def get_distance_norm(line, centroid, axis):
+def get_distance_norm_with_axis(line, centroid, axis):
     (x1, y1), (x2, y2) = line
     (cx, cy) = centroid
     x_diff_1 = cx - x1
@@ -223,7 +234,20 @@ def get_distance_norm(line, centroid, axis):
     return min(diff_1, diff_2) + (1 - cos_theta) * 10 # Add a large penalty for non-parallel lines
 
 
-def find_lines_that_point_to_centroids(detected_lines, stats, centroids, axes, threshold=10):
+def get_distance_norm(line, centroid):
+    (x1, y1), (x2, y2) = line
+    (cx, cy) = centroid
+    x_diff_1 = cx - x1
+    y_diff_1 = cy - y1
+    x_diff_2 = cx - x2
+    y_diff_2 = cy - y2
+    diff_1 = np.sqrt(x_diff_1 ** 2 + y_diff_1 ** 2)
+    diff_2 = np.sqrt(x_diff_2 ** 2 + y_diff_2 ** 2)
+
+    return min(diff_1, diff_2)
+
+
+def find_lines_that_point_to_centroids(detected_lines, stats, centroids,  threshold=10):
     """
     Find lines intersecting with centroids and remove centroids with no intersecting lines.
     """
@@ -239,7 +263,9 @@ def find_lines_that_point_to_centroids(detected_lines, stats, centroids, axes, t
 
         for line in detected_lines:
 
-            this_diff = get_distance_norm(line, (cx, cy), axes[element])
+            #print((line, (cx, cy), axes[element]))
+
+            this_diff = get_distance_norm(line, (cx, cy))
 
             if this_diff < min_diff:
                 min_diff = this_diff
@@ -345,40 +371,68 @@ def get_result(image_path, model_path, result_path):
 
 def try_stuff(image_path, mask_path):
     binary_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-    # binary_mask =detect.arrow_heads(image_path, model_path)
+    #binary_mask =detect.arrow_heads(image_path, model_path)
     original_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
 
     detected_lines = detect_lines(original_image)
 
-    #num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
     #num_labels, labels, stats, centroids, axes = compute_best_symmetry_axes(binary_mask)
+    """plt.figure(figsize=(8, 8))
+    plt.imshow(original_image, cmap='gray')
+    for info in axes.values():
+        cx, cy = info['center']
+        dx, dy = info['axis']
+        plt.arrow(cx - dx * 50, cy - dy * 50, dx * 100, dy * 100, color='red', head_width=5)
+    plt.title("Beste Symmetrieachsen ")
+    plt.axis('off')
+    plt.show()
+
+
+    for i in range (1, num_labels):
+        print(f"Label {i}:")
+        print(f"  Centroid: {centroids[i]}")
+        print(f"  Area: {stats[i, cv2.CC_STAT_AREA]}")
+        print(f"  Bounding Box: {stats[i, cv2.CC_STAT_LEFT]}, {stats[i, cv2.CC_STAT_TOP]}, {stats[i, cv2.CC_STAT_WIDTH]}, {stats[i, cv2.CC_STAT_HEIGHT]}")
+
+
+
+
+    for key, val in axes.items():
+        print(key)
+        print(val)
+        print(val.get('center') == centroids[key])"""
+
+    visualize_results(original_image, [], detected_lines )
+
     detected_lines = filter_short_lines(detected_lines)
-    visualize_results(original_image, [], detected_lines)
+    #visualize_results(original_image, [], detected_lines)
     # Find intersecting lines
     # TODO maybe pre process the lines to make them more correct
     # TODO here we need to make it so we can only match one line with one point of interest and in a certain distance
-    #intersecting_lines, new_centroids = find_lines_that_point_to_centroids(detected_lines, stats, centroids, axes)
+
+    intersecting_lines, new_centroids = find_lines_that_point_to_centroids(detected_lines, stats, centroids)
 
     # Filter short lines
     # TODO: what does this do?
     # intersecting_lines = filter_short_lines(intersecting_lines)
-    # intersecting_lines, new_centroids = find_lines_intersecting_components(intersecting_lines, labels, new_centroids)
+    intersecting_lines, new_centroids = find_lines_intersecting_components(detected_lines, labels, centroids)
 
-    #visualize_results(original_image, new_centroids, intersecting_lines)
+    visualize_results(original_image, new_centroids, intersecting_lines)
 
 
 if __name__ == "__main__":
     # Image path
 
 
-    for i in range(1, 14):
+    for i in range(1, 13):
         script_path = os.getcwd()
         base_path = os.path.dirname(script_path)
         test_images = 'test/realPictures'
         binary_mask = 'test/binaryMasks'
         image_path = os.path.join(base_path, test_images,  f"{i}.jpg")
         #image_path = os.path.join(base_path, f'datasetGeneration/data/i{i}.jpg')
-        #model_path = os.path.join(base_path,'saved_models', model_name)
+        model_path = os.path.join(base_path,'saved_models', model_name)
         mask_path = os.path.join(base_path, binary_mask, f"{i}.png")
         #mask_path = os.path.join(base_path, f'datasetGeneration/data/m{i}.jpg')
         result_path = os.path.join(base_path, 'test_results', f"centroid_{i}_result.png")

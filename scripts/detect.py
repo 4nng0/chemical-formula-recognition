@@ -4,6 +4,7 @@ import tensorflow as tf
 from tensorflow.keras.models import load_model
 import os
 from scripts import visualisation
+import matplotlib.pyplot as plt
 
 # Enable GPU memory growth
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -49,13 +50,29 @@ def arrow_heads(image_path, model_path):
 
     return binary_mask
 
+def procesed_stats(binary_mask):
+    #TODO filter out small objects or to big objects
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
+    data = stats[1:, cv2.CC_STAT_AREA]
+    x = np.sort(data)
 
+    plt.hist(data, bins=100)
+    plt.show()
+
+    # CDF-Werte berechnen
+    y = 1. * np.arange(len(data)) / (len(data) - 1)
+    plt.xlim(x[0], x[-1])
+
+    # CDF plotten
+    plt.plot(x, y)
+    plt.xlabel('x')
+    plt.show()
 
 if __name__ == "__main__":
     # Specify a test image path
     script_path = os.getcwd()
     base_path = os.path.dirname(script_path)
-    test_image_dir = 'test_images'
+    test_image_dir = 'test/realPictures'
     image_name = '2.jpg'
     model_name = 'saved_models/unet_model_512_version_1.keras'
     image_path = os.path.join(base_path, test_image_dir, image_name)
@@ -65,6 +82,7 @@ if __name__ == "__main__":
     
     # Call detect_arrow_heads function
     arrow_heads = arrow_heads(image_path, model_path)
+    procesed_stats(arrow_heads)
     
     # Check the output
     #print("Arrow heads detected at positions:", arrow_heads)
