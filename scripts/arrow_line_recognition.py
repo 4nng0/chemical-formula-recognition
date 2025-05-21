@@ -177,7 +177,8 @@ def detect_lines(image):
     return lines_list
 
 
-def visualize_results(image, centroids, intersecting_lines):
+def visualize_results(image, centroids, intersecting_lines, info=None):
+
     """
     Visualize the centroids and intersecting lines on the image.
     """
@@ -185,15 +186,42 @@ def visualize_results(image, centroids, intersecting_lines):
 
     # Mark centroids
     for cx, cy in centroids[1:]:
-        cv2.circle(output_image, (int(cx), int(cy)), 5, (0, 255, 0), -1)  # Green dots
+        cv2.circle(output_image, (int(cx), int(cy)), 10, (0, 255, 0), -1)  # Green dots
 
     # Draw lines
-    for (x1, y1), (x2, y2) in intersecting_lines:
-        cv2.line(output_image, (x1, y1), (x2, y2), (0, 0, 255), 2)  # Red lines
+    for line_list in intersecting_lines:
+        start = line_list[0]
+        start = (int(start[0]), int(start[1]))
+        for i in range(1, len(line_list)):
+            next = line_list[i]
+            cv2.line(output_image, start, next, (0, 0, 255), 2)  # Red lines
+            start = next
+
+    #
+    #         plt.imshow(binary_mask, cmap='gray')
+    #         for info in axes.values():
+    #             cx, cy = info['center']
+    #             dx, dy = info['axis']
+    #             plt.arrow(cx - dx * 50, cy - dy * 50, dx * 100, dy * 100, color='red', head_width=5)
+    #         plt.title("Beste Symmetrieachsen (PCA + Hausdorff)")
+    #         plt.axis('off')
+    #         plt.show()
 
     plt.figure(figsize=(8, 8))
-    plt.title("Centroids and Intersecting Lines")
+    if info is not None:
+        plt.title(info)
+    else:
+        plt.title("Centroids and Intersecting Lines")
+
     plt.imshow(cv2.cvtColor(output_image, cv2.COLOR_BGR2RGB))
+    """for line_list in intersecting_lines:
+        start = line_list[0]
+        start = (int(start[0]), int(start[1]))
+        for i in range(1, len(line_list)):
+            next = line_list[i]
+            plt.arrow(start[0], start[1], next[0] - start[0], next[1] -start[1], color='red', head_width=15 ) # Red lines
+            start = next"""
+
     plt.axis("off")
     plt.show()
     return output_image
@@ -244,8 +272,11 @@ def get_distance_norm(line, centroid):
     diff_1 = np.sqrt(x_diff_1 ** 2 + y_diff_1 ** 2)
     diff_2 = np.sqrt(x_diff_2 ** 2 + y_diff_2 ** 2)
 
-    return min(diff_1, diff_2)
-
+    # returns the smaller distance and the point of the line that is farther away from the centroid
+    if diff_1 <  diff_2:
+        return diff_1, (x2, y2)
+    else:
+        return diff_2, (x1, y1)
 
 def find_lines_that_point_to_centroids(detected_lines, stats, centroids,  threshold=10):
     """
@@ -255,30 +286,62 @@ def find_lines_that_point_to_centroids(detected_lines, stats, centroids,  thresh
     valid_centroids = [centroids[0]]  # Keep the background centroid (index 0)
     element = 0
 
-    #go over the list of lines and mathc ist with best maching centroid
+    #go over the list of lines and match ist with best matching centroid
     for r_idx, (cx, cy) in enumerate(centroids[1:], start=1):  # Skip background centroid
         element += 1
-        threshold = max(stats[element, cv2.CC_STAT_WIDTH], stats[element, cv2.CC_STAT_HEIGHT]) * 10
+        threshold = max(stats[element, cv2.CC_STAT_WIDTH], stats[element, cv2.CC_STAT_HEIGHT]) * 2
         min_diff = 2 * threshold
 
         for line in detected_lines:
 
-            #print((line, (cx, cy), axes[element]))
-
-            this_diff = get_distance_norm(line, (cx, cy))
+            this_diff, point = get_distance_norm(line, (cx, cy))
 
             if this_diff < min_diff:
                 min_diff = this_diff
                 best_match = line
+                this_line = [(cx, cy), point]
+
 
         if min_diff < threshold:
-            intersecting_lines.append(best_match)
+
+            intersecting_lines.append(this_line)
             detected_lines.remove(best_match)
             valid_centroids.append((cx, cy))
 
-    return intersecting_lines, valid_centroids
 
-def find_lines_intersecting_components(detected_lines, labels, centroids, threshold=10):
+
+    # Filter out lines that are too short
+    return intersecting_lines , valid_centroids, detected_lines
+
+
+def backtrack_lines(original_image, detected_lines, intersecting_lines, threshold=10):
+    queue = list(range(len(intersecting_lines)))
+
+    for i in queue:
+        this_line = intersecting_lines[i]
+        (x, y) = this_line [-1]
+        min_diff = 2 * threshold
+
+        for line in detected_lines:
+            this_diff, point = get_distance_norm(line, (x, y))
+
+            if this_diff < min_diff:
+                min_diff = this_diff
+                best_match = line
+                best_point = point
+
+        if min_diff < threshold:
+
+            intersecting_lines[i].append(best_point)
+            diff = get_distance_norm(best_match, (x, y))
+            #visualize_results(original_image, [], [intersecting_lines[i]], info= f"min-diff = {min_diff}, diff {diff} \n this line{this_line} \n best_match {best_match} \n {x}, {y} ")
+            detected_lines.remove(best_match)
+            queue.append(i)
+
+
+    return intersecting_lines
+
+def find_lines_intersecting_components(detected_lines, centroids, threshold=10):
     """
     Find intersecting lines for detected components and remove centroids with no intersecting lines.
     """
@@ -368,64 +431,153 @@ def get_result(image_path, model_path, result_path):
 
     cv2.imwrite(result_path, output_image)
 
+def overlaps(line1, line2, dist_thresh):
+    (l1_x1, l1_y1), (l1_x2, l1_y2) = line1
+    (l2_x1, l2_y1), (l2_x2, l2_y2) = line2
+    x_min = min(l1_x1, l1_x2) - dist_thresh
+    x_max = max(l1_x1, l1_x2) + dist_thresh
+    y_min = min(l1_y1, l1_y2) - dist_thresh
+    y_max = max(l1_y1, l1_y2) + dist_thresh
+
+    return (x_min <= l2_x1 <= x_max and y_min <= l2_y1 <= y_max) or (x_min <= l2_x2 <= x_max and y_min <= l2_y2 <= y_max)
+
+
+def angles_are_similar(line1, line2, angle_thresh=10):
+    (l1_x1, l1_y1), (l1_x2, l1_y2) = line1
+    (l2_x1, l2_y1), (l2_x2, l2_y2) = line2
+    angle1 = np.degrees(np.arctan2(l1_y2 - l1_y1, l1_x2 - l1_x1)) % 180
+    angle2 = np.degrees(np.arctan2(l2_y2 - l2_y1, l2_x2 - l2_x1)) % 180
+
+    # Winkelähnlichkeit prüfen
+    return abs(angle1 - angle2) <= angle_thresh
+
+
+
+def combine_cluster_lines(original_image, lines, target_lines, angle_thresh=12, dist_thresh=10):
+    clusters = []
+    used = [False] * len(lines)
+
+    for target_line in target_lines:
+        cluster = [target_line]
+
+        angles_match = []
+
+        for j in range(len(lines)):
+            if not used[j] and angles_are_similar(target_line, lines[j], angle_thresh):
+                angles_match.append(j)
+
+        #print(f'targetline : {target_line} \n angles_match: {angles_match}')
+
+        for j in range(len(angles_match)):
+            if not used[j] and (overlaps(target_line, lines[j], dist_thresh) or overlaps(lines[j], target_line, dist_thresh)):
+                cluster.append(lines[j])
+
+                #print(f"Clustered line {lines[j]} with target line {target_line}")
+                used[j] = True
+                lines.remove(lines[j])
+
+        clusters.append(cluster)
+
+
+    intersecting_lines = []
+
+    for cluster in clusters:
+        corner1 = []
+        corner2 = []
+        angles = []
+        for line in cluster:
+            (x1, y1), (x2, y2) = line
+            angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+            if angle >= 0:
+                corner1.append((x2, y2))
+                corner2.append((x1, y1))
+            else:
+                corner1.append((x1, y1))
+                corner2.append((x2, y2))
+
+            angles.append(angle % 180)
+
+        angle = np.mean(angles)
+        #print(angles)
+        line = (0,0), (0,0)
+        #print(corner1)
+        #visualize_results(original_image, corner1, cluster, info= f'number of lines: {len(cluster)} \n angle: {angle}')
+        if angle < (22.5):
+            x1 = max(x for x, y in corner1)
+            y1 = np.mean([y for x, y in corner1])
+            x2 = min(x for x, y in corner2)
+            y2 = np.mean([y for x, y in corner2])
+            line = (int(x1), int(y1)), (int(x2), int(y2))
+        elif angle < (67.5):
+            x1 = min(min(x for x, y in corner1), min(x for x, y in corner2))
+            x2 = max( max(x for x, y in corner1), max(x for x, y in corner2))
+            y1 = min(min(y for x, y in corner1), min(y for x, y in corner2))
+            y2 = max(max(y for x, y in corner1), max(y for x, y in corner2))
+            line = (int(x1), int(y1)), (int(x2), int(y2))
+        elif angle < (112.5):
+            y1 = max(y for x, y in corner1)
+            x1 = np.mean([x for x, y in corner1])
+            y2 = min(y for x, y in corner2)
+            x2 = np.mean([x for x, y in corner2])
+            line = (int(x1), int(y1)), (int(x2), int(y2))
+        elif angle < (157.5):
+            x2 = min(min(x for x, y in corner1), min(x for x, y in corner2))
+            x1 = max(max(x for x, y in corner1), max(x for x, y in corner2))
+            y1= min(min(y for x, y in corner1), min(y for x, y in corner2))
+            y2 = max(max(y for x, y in corner1), max(y for x, y in corner2))
+            line = (int(x1), int(y1)), (int(x2), int(y2))
+        else:
+            x1 = max(x for x, y in corner2)
+            y1 = np.mean([y for x, y in corner2])
+            x2 = min(x for x, y in corner2)
+            y2 = np.mean([y for x, y in corner2])
+            line = (int(x1), int(y1)), (int(x2), int(y2))
+        intersecting_lines.append(line)
+
+    print(intersecting_lines)
+
+    return intersecting_lines, lines
+
 
 def try_stuff(image_path, mask_path):
     binary_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
     #binary_mask =detect.arrow_heads(image_path, model_path)
     original_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    #without_arrow = original_image.copy()
+
+    #without_arrow[binary_mask == 255] = 255
+
 
     detected_lines = detect_lines(original_image)
+    detected_lines = filter_short_lines(detected_lines)
+
+
+
+    visualize_results(original_image, [], detected_lines)
 
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
     #num_labels, labels, stats, centroids, axes = compute_best_symmetry_axes(binary_mask)
-    """plt.figure(figsize=(8, 8))
-    plt.imshow(original_image, cmap='gray')
-    for info in axes.values():
-        cx, cy = info['center']
-        dx, dy = info['axis']
-        plt.arrow(cx - dx * 50, cy - dy * 50, dx * 100, dy * 100, color='red', head_width=5)
-    plt.title("Beste Symmetrieachsen ")
-    plt.axis('off')
-    plt.show()
 
 
-    for i in range (1, num_labels):
-        print(f"Label {i}:")
-        print(f"  Centroid: {centroids[i]}")
-        print(f"  Area: {stats[i, cv2.CC_STAT_AREA]}")
-        print(f"  Bounding Box: {stats[i, cv2.CC_STAT_LEFT]}, {stats[i, cv2.CC_STAT_TOP]}, {stats[i, cv2.CC_STAT_WIDTH]}, {stats[i, cv2.CC_STAT_HEIGHT]}")
-
-
-
-
-    for key, val in axes.items():
-        print(key)
-        print(val)
-        print(val.get('center') == centroids[key])"""
-
-    visualize_results(original_image, [], detected_lines )
-
-    detected_lines = filter_short_lines(detected_lines)
-    #visualize_results(original_image, [], detected_lines)
     # Find intersecting lines
-    # TODO maybe pre process the lines to make them more correct
-    # TODO here we need to make it so we can only match one line with one point of interest and in a certain distance
+    intersecting_lines, valid_centroids, detected_lines = find_lines_that_point_to_centroids(detected_lines, stats, centroids)
 
-    intersecting_lines, new_centroids = find_lines_that_point_to_centroids(detected_lines, stats, centroids)
+    intersecting_lines, detected_lines= combine_cluster_lines(original_image, detected_lines, intersecting_lines)
 
-    # Filter short lines
-    # TODO: what does this do?
-    # intersecting_lines = filter_short_lines(intersecting_lines)
-    intersecting_lines, new_centroids = find_lines_intersecting_components(detected_lines, labels, centroids)
+    intersecting_lines = match_line(valid_centroids, intersecting_lines)
+    #visualize_results(original_image, valid_centroids, intersecting_lines)
+    #intersecting_lines = backtrack_lines(original_image, detected_lines, intersecting_lines, threshold = 10)
 
-    visualize_results(original_image, new_centroids, intersecting_lines)
+    #intersecting_lines, new_centroids = find_lines_intersecting_components(detected_lines, centroids)
+
+    visualize_results(original_image, valid_centroids, intersecting_lines)
 
 
 if __name__ == "__main__":
     # Image path
 
 
-    for i in range(1, 13):
+    for i in range(12, 13):
         script_path = os.getcwd()
         base_path = os.path.dirname(script_path)
         test_images = 'test/realPictures'
