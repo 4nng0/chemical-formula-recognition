@@ -7,6 +7,8 @@ from skimage.metrics import hausdorff_distance
 from visualisation import visualize_results
 from shapely.geometry import LineString
 from shapely.ops import nearest_points
+import decimer_segmentation as ds
+
 
 from scripts import detect
 
@@ -55,12 +57,6 @@ class Graph:
         if id2 in self.nodes and id1 in self.nodes[id2].neighbors:
             self.nodes[id2].neighbors.remove(id1)
 
-#TODO: get the threshold to a better value,
-#TODO: somehow support - - - > arrows.
-#TODO: get a way to test the accuracy
-#TODO: only one line per centroid
-#TODO: splitting lines with more points of interest
-#TODO: some arrows are to short, whats up with that?
 
 model_name = 'unet_model_512_version_1.keras'
 
@@ -248,7 +244,6 @@ def visualize_simple_graph(image, graph, info=None):
     plt.imshow(cv2.cvtColor(output_image, cv2.COLOR_BGR2RGB))
     plt.axis("off")
     plt.show()
-
 # Bounding box calculation
 def get_rotated_bounding_box(x1, y1, x2, y2, threshold=20):
     # Convert the line to a list of points
@@ -356,7 +351,7 @@ def backtrack_lines(original_image, lines, graph, threshold=5):
 
         if min_diff < threshold:
 
-            best_match, lines = combine_cluster_lines(original_image, lines, [best_match])
+            best_match, lines = combine_cluster_lines_targeted(original_image, lines, [best_match])
             (x1, y1), (x2, y2) = best_match[0]
             line2 = LineString([(x1, y1), (x2, y2)])
 
@@ -389,6 +384,15 @@ def backtrack_lines(original_image, lines, graph, threshold=5):
                 graph.add_edge(p2, p1)
                 queue.append((p1, u))
                 queue.append((p1, v))
+
+
+    for u in graph.nodes:
+        for v in graph.nodes:
+
+            x_diff = u[0] - v[0]
+            y_diff=  u[1] - v[1]
+            if np.sqrt(x_diff ** 2 + y_diff ** 2) < threshold and u != v:
+                graph.add_edge(u, v)
 
     return graph
 
@@ -487,7 +491,7 @@ def angles_are_similar(line1, line2, angle_thresh=10):
     # Winkelähnlichkeit prüfen
     return abs(angle1 - angle2) <= angle_thresh
 
-def combine_cluster_lines(original_image, lines, target_lines, angle_thresh=6, dist_thresh=20, show=False):
+def combine_cluster_lines_targeted(original_image, lines, target_lines, angle_thresh=6, dist_thresh=10, show=False):
     clusters = []
     used = [False] * len(lines)
 
@@ -600,7 +604,100 @@ def combine_cluster_lines(original_image, lines, target_lines, angle_thresh=6, d
     if all_found:
         return intersecting_lines, lines
     else:
-        return combine_cluster_lines(original_image, lines, intersecting_lines, angle_thresh=angle_thresh, dist_thresh=dist_thresh)
+        return combine_cluster_lines_targeted(original_image, lines, intersecting_lines, angle_thresh=angle_thresh, dist_thresh=dist_thresh)
+
+def combine_cluster_lines(original_image, lines, angle_thresh=6, dist_thresh=20, show=False):
+    clusters = []
+    used = [False] * len(lines)
+
+    for idx, target_line in enumerate(lines):
+        if used[idx]:
+            continue
+
+        cluster = [target_line]
+        used[idx] = True  # markiere die Startlinie sofort als verwendet
+
+        for j in range(len(lines)):
+            if not used[j] and angles_are_similar(target_line, lines[j], angle_thresh):
+                if overlaps(target_line, lines[j], dist_thresh) or overlaps(lines[j], target_line, dist_thresh):
+                    cluster.append(lines[j])
+                    used[j] = True
+
+        clusters.append(cluster)
+
+    if show:
+
+        for cluster in clusters:
+            visualize_results(original_image, [], cluster, info= f'number of lines {len(cluster)} \n taget_line: {cluster[0]}')
+
+    intersecting_lines = []
+
+    all_found = True
+
+    for cluster in clusters:
+        if len(cluster) > 1:
+            all_found = False
+        corner1 = []
+        corner2 = []
+        angles = []
+        for line in cluster:
+            (x1, y1), (x2, y2) = line
+            angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+            if angle >= 0:
+                corner1.append((x2, y2))
+                corner2.append((x1, y1))
+            else:
+                corner1.append((x1, y1))
+                corner2.append((x2, y2))
+
+            angles.append(angle % 180)
+
+        angle = np.mean(angles)
+        #print(angles)
+        line = list()
+        #print(corner1)
+        #visualize_results(original_image, corner1, cluster, info= f'number of lines: {len(cluster)} \n angle: {angle}')
+        if angle < (10):
+            x1 = max(x for x, y in corner2)
+            y1 = np.mean([y for x, y in corner1])
+            x2 = min(x for x, y in corner1)
+            y2 = np.mean([y for x, y in corner2])
+            line.append((int(x1), int(y1)))
+            line.append((int(x2), int(y2)))
+        elif angle < (80):
+            x1 = min(min(x for x, y in corner1), min(x for x, y in corner2))
+            x2 = max( max(x for x, y in corner1), max(x for x, y in corner2))
+            y1 = min(min(y for x, y in corner1), min(y for x, y in corner2))
+            y2 = max(max(y for x, y in corner1), max(y for x, y in corner2))
+            line.append((int(x1), int(y1)))
+            line.append((int(x2), int(y2)))
+        elif angle < (100):
+            y1 = max(y for x, y in corner1)
+            x1 = np.mean([x for x, y in corner1])
+            y2 = min(y for x, y in corner2)
+            x2 = np.mean([x for x, y in corner2])
+            line.append((int(x1), int(y1)))
+            line.append((int(x2), int(y2)))
+        elif angle < (170):
+            x1 = max(max(x for x, y in corner1), max(x for x, y in corner2))
+            y1= min(min(y for x, y in corner1), min(y for x, y in corner2))
+            x2 = min(min(x for x, y in corner1), min(x for x, y in corner2))
+            y2 = max(max(y for x, y in corner1), max(y for x, y in corner2))
+            line.append((int(x1), int(y1)))
+            line.append((int(x2), int(y2)))
+        else:
+            x1 = max(x for x, y in corner2)
+            y1 = np.mean([y for x, y in corner2])
+            x2 = min(x for x, y in corner1)
+            y2 = np.mean([y for x, y in corner1])
+            line.append((int(x1), int(y1)))
+            line.append((int(x2), int(y2)))
+        intersecting_lines.append(line)
+
+    if all_found:
+        return intersecting_lines
+    else:
+        return combine_cluster_lines(original_image, intersecting_lines, angle_thresh=angle_thresh, dist_thresh=dist_thresh)
 
 def match_lines(centroids, lines):
     arrow_graph = Graph()
@@ -634,34 +731,8 @@ def match_lines(centroids, lines):
 
     return arrow_graph
 
-def get_result(image_path, model_path, result_path):
-    binary_mask = cv2.imread(model_path, cv2.IMREAD_GRAYSCALE)
-    #binary_mask =detect.arrow_heads(image_path, model_path)
-    original_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-
-    detected_lines = detect_lines(original_image)
-
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
-
-    print(f"Total connected components (excluding background): {num_labels - 1}")
-
-    detected_lines = filter_short_lines(detected_lines)
-    visualize_results(binary_mask, centroids, [])
-    intersecting_lines, new_centroids = find_lines_that_point_to_centroids(detected_lines, stats, centroids)
-    visualize_results(binary_mask, new_centroids, [])
-    return 0
-
-
-    # Filter short lines
-    #TODO: what does this do?
-    #intersecting_lines = filter_short_lines(intersecting_lines)
-    #intersecting_lines, new_centroids = find_lines_intersecting_components(intersecting_lines, labels, new_centroids)
-    
-    output_image = visualize_results(original_image, new_centroids, intersecting_lines)
-
-    cv2.imwrite(result_path, output_image)
-
-def try_stuff(image_path, mask_path):
+def get_result(image_path, mask_path):
+    """
     binary_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
     #binary_mask =detect.arrow_heads(image_path, model_path)
     original_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
@@ -673,8 +744,34 @@ def try_stuff(image_path, mask_path):
 
     detected_lines = detect_lines(without_arrow)
     visualize_results(original_image, [], detected_lines)
+    detected_lines = combine_cluster_lines(original_image, detected_lines)
+    visualize_results(original_image, [], detected_lines)
     detected_lines = filter_short_lines(detected_lines)
+    visualize_results(original_image, [], detected_lines)
 
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
+    graph = match_lines(centroids, detected_lines)
+
+    visualize_simple_graph(original_image, graph)
+
+    graph = backtrack_lines(original_image, detected_lines, graph, threshold=10)
+
+    visualize_simple_graph(original_image, graph)
+
+
+
+
+    """
+    binary_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+    #binary_mask =detect.arrow_heads(image_path, model_path)
+    original_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+
+    without_arrow = original_image.copy()
+
+    without_arrow[binary_mask == 255] = 255
+
+    detected_lines = detect_lines(without_arrow)
+    detected_lines = filter_short_lines(detected_lines)
 
 
     visualize_results(original_image, [], detected_lines)
@@ -688,7 +785,7 @@ def try_stuff(image_path, mask_path):
 
     #visualize_results(original_image, valid_centroids, intersecting_lines, info="after detection")
 
-    intersecting_lines, detected_lines= combine_cluster_lines(original_image, detected_lines, intersecting_lines)
+    intersecting_lines, detected_lines= combine_cluster_lines_targeted(original_image, detected_lines, intersecting_lines)
 
     #visualize_results(original_image, valid_centroids, intersecting_lines, info="after clustering")
 
@@ -699,14 +796,35 @@ def try_stuff(image_path, mask_path):
     graph = backtrack_lines(original_image, detected_lines, graph, threshold = 10)
 
     visualize_simple_graph(original_image, graph)
+    return graph
 
+
+def find_structure_boxes(image_path):
+    # Lade Bild
+    image = cv2.imread(image_path)
+    if image is None:
+        raise FileNotFoundError(f"Bild nicht gefunden: {image_path}")
+
+    # Wandle BGR -> RGB (DECIMER erwartet RGB)
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    # Strukturen segmentieren
+    segments = segment_chemical_structures(image_rgb)
+
+    # Extrahiere Bounding Boxes
+    bounding_boxes = []
+    for segment in segments:
+        x, y, w, h = segment['bbox']
+        bounding_boxes.append((x, y, x + w, y + h))  # (x1, y1, x2, y2)
+
+    return bounding_boxes
 
 
 if __name__ == "__main__":
     # Image path
 
 
-    for i in range(12, 13):
+    for i in range(1, 14):
         script_path = os.getcwd()
         base_path = os.path.dirname(script_path)
         test_images = 'test/realPictures'
@@ -717,8 +835,7 @@ if __name__ == "__main__":
         mask_path = os.path.join(base_path, binary_mask, f"{i}.png")
         #mask_path = os.path.join(base_path, f'datasetGeneration/data/m{i}.jpg')
         result_path = os.path.join(base_path, 'test_results', f"centroid_{i}_result.png")
-        try_stuff(image_path, mask_path)
-        # right now we use the right binary mask and not the one from the model
-        #get_result(image_path, mask_path, result_path)
+        get_result(image_path, mask_path)
+
 
 
