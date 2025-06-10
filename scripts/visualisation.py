@@ -14,8 +14,8 @@ def display_image_with_mask(image_path, binary_mask):
     image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
     image_rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
-    print("Image shape:", image_rgb.shape)
-    print("Overlay shape:", overlay.shape)
+    #print("Image shape:", image_rgb.shape)
+    #print("Overlay shape:", overlay.shape)
 
     # Stelle sicher, dass die Maske nicht auf Weiß unsichtbar wird
     overlayed_image = image_rgb.copy()
@@ -25,6 +25,7 @@ def display_image_with_mask(image_path, binary_mask):
     plt.imshow(overlayed_image)
     plt.title("Arrow Heads Detected with Binary Mask Overlay")
     plt.axis("off")
+    plt.show()
     return plt
 
 def visualize_results(image, centroids, intersecting_lines, info=None):

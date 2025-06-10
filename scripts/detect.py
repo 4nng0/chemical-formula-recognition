@@ -5,6 +5,10 @@ from tensorflow.keras.models import load_model
 import os
 from scripts import visualisation
 import matplotlib.pyplot as plt
+import torch
+from scripts.Unet_pytorch import unet
+
+import torch.nn.functional as F
 
 # Enable GPU memory growth
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -15,8 +19,48 @@ if gpus:
         print("Enabled GPU memory growth.")
     except RuntimeError as e:
         print(f"Error enabling GPU memory growth: {e}")
-        
 
+
+def arrow_heads_py(image_path, model_path, device='cpu'):
+
+    model = unet()
+    model.load_state_dict(torch.load("seg_model_new.pth", map_location="cpu"))
+    model.eval()
+
+    image = cv2.imread(image_path)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    if image is None:
+        raise ValueError(f"Image not found at path: {image_path}")
+
+
+    image = cv2.convertScaleAbs(image, alpha=1.3, beta=0)
+    image_resized = cv2.resize(image, (512, 512))
+    image_tensor = torch.tensor(image_resized, dtype=torch.float32)
+    image_tensor = image_tensor.squeeze()  # [512, 512, 3]
+
+    image_tensor = image_tensor.permute(2, 0, 1)
+    image_tensor = image_tensor.unsqueeze(0)
+    # Normieren und Tensor formen
+
+    image_tensor = image_tensor.to(device)
+
+    # Vorhersage
+    try:
+        with torch.no_grad():
+            prediction = model(image_tensor)
+            prediction = prediction.squeeze().cpu().numpy()
+        print("Prediction completed successfully!")
+    except Exception as e:
+        print(f"Error during prediction: {e}")
+        return None
+
+    # Größe zurück auf Originalbild
+    prediction_resized = cv2.resize(prediction, (image.shape[1], image.shape[0]))
+
+    threshold = 0.4
+    binary_mask = (prediction_resized > threshold).astype(np.uint8)
+
+    return binary_mask
 
 def arrow_heads(image_path, model_path):
     print(image_path)
@@ -73,16 +117,19 @@ if __name__ == "__main__":
     script_path = os.getcwd()
     base_path = os.path.dirname(script_path)
     test_image_dir = 'test/realPictures'
-    image_name = '2.jpg'
-    model_name = 'saved_models/unet_model_512_version_1.keras'
+    image_name = '3.jpg'
+    model_name = 'saved_models/seg_model.pth'
     image_path = os.path.join(base_path, test_image_dir, image_name)
     model_path = os.path.join(base_path, model_name)
     
     # Process image
     
     # Call detect_arrow_heads function
-    arrow_heads = arrow_heads(image_path, model_path)
-    procesed_stats(arrow_heads)
+    arrow_heads = arrow_heads_py(image_path, model_path)
+    plt.imshow(arrow_heads)
+    plt.show()
+
+    #procesed_stats(arrow_heads)
     
     # Check the output
     #print("Arrow heads detected at positions:", arrow_heads)
