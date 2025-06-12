@@ -606,7 +606,7 @@ def combine_cluster_lines_targeted(original_image, lines, target_lines, angle_th
     else:
         return combine_cluster_lines_targeted(original_image, lines, intersecting_lines, angle_thresh=angle_thresh, dist_thresh=dist_thresh)
 
-def combine_cluster_lines(original_image, lines, angle_thresh=6, dist_thresh=20, show=False):
+def combine_cluster_lines(original_image, lines, angle_thresh=6, dist_thresh=10, show=False):
     clusters = []
     used = [False] * len(lines)
 
