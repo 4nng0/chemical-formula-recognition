@@ -33,7 +33,9 @@ def remove_text(input_path: str, output_path: str) -> None:
         # Always remove detected text
         cv2.fillPoly(image, pts=[points], color=(255, 255, 255))  # Fill with white color
     print(f"Processed image saved to {output_path}")
-    cv2.imwrite(output_path, image)  # Save the processed image
+    if output_path is not None:
+        cv2.imwrite(output_path, image)  # Save the processed image
+    return image
 
 
 # Example Usage

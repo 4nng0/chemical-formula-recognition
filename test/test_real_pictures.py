@@ -22,6 +22,7 @@ def testPixelAccuracy(numberOfPictures):
         image = cv2.imread("binaryMasks/" + str(picture) + ".png", cv2.IMREAD_GRAYSCALE)  # Graustufenbild laden
         real = (image > 127).astype(np.uint8)
 
+
         tp = np.sum(predicted * real)  # TP
         fp = np.sum(predicted  * (1 - real))  # FP
         fn = np.sum((1 - predicted ) * real)  # FN
@@ -135,7 +136,7 @@ def testCentroidAccuracy(numberOfPictures):
 
 if __name__ == "__main__":
 
-    numberOfPictures = 13
+    numberOfPictures = 1
 
     testPixelAccuracy(numberOfPictures)
 
